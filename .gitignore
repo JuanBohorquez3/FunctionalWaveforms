@@ -150,3 +150,10 @@ static
 
 # Visual Studio
 .vs/
+
+# Old Waveforms
+/FunctionalWaveforms20200214.py
+/FunctionalWaveforms20200226.py
+/FunctionalWaveforms20200305.py
+/FunctionalWaveforms20200711.py
+/FunctionalWaveforms20201017.py

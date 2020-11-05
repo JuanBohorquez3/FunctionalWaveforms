@@ -6,7 +6,7 @@ To use a file in this repo as your functional waveform, add the following code t
     import os
 
     waveforms_path = "C:\Users\Hybrid\Repos\FunctionalWaveforms"
-    file_name = "Base_Waveform.py"
+    file_name = "filename"
 
     waveform_file = os.path.join(waveforms_path,file_name)
 

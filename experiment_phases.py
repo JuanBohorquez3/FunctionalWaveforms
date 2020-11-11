@@ -14,9 +14,9 @@ def trap_in_dark(t, duration):
     Returns:
         t (float): End time (ms)
     """
-    vODT_switch(t, 1)
-    D2_switch(t, 0)
-    HF_switch(t, 0)
+    trap_switch(t, 1)
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
     t += duration
     return t
 
@@ -32,9 +32,9 @@ def trap_pulse_off(t, duration, trap_on=True):
     Returns:
         t (float): End time (ms)
     """
-    vODT_switch(t, 0)
+    trap_switch(t, 0)
     t += duration
-    vODT_switch(t, trap_on)
+    trap_switch(t, trap_on)
     return t
 
 
@@ -49,20 +49,20 @@ def blowaway_pulse(t, duration):
     Returns:
         t (float): end time (ms)
     """
-    Cooling_Shutter_switch(t - Cooling_Shutter_delay_on, 0)
-    Blowaway_Shutter_switch(t, 1)
+    d2_shutter(t - Cooling_Shutter_delay_on, 0)
+    blowaway_shutter(t, 1)
 
-    D2_DDS(t, 'BA')
-    D2_switch(t, 1)
-    HF_switch(t, 0)
-    HF_amplitude(t, RO1_hyperfine_power)
+    d2_dds(t, 'BA')
+    d2_switch(t, 1)
+    repumper_switch(t, 0)
+    repumper_amplitude(t, RO1_hyperfine_power)
 
     t += duration
 
-    D2_switch(t, 0)
-    HF_switch(t, 0)
-    Blowaway_Shutter_switch(t, 0)
-    Cooling_Shutter_switch(t - Cooling_Shutter_delay_off, 1)
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
+    blowaway_shutter(t, 0)
+    d2_shutter(t - Cooling_Shutter_delay_off, 1)
 
     return t
 
@@ -85,7 +85,7 @@ def microwave_pulse(t, delay, duration, chop=False):
         # vODT_power(t,vertTrapPowerChop)
         chopped_trap(t, duration, period=1e-3, trap_duty_cycle=(0.2, 0.41))
 
-    pulse(t, duration, uW_switch)
+    pulse(t, duration, microwave_switch)
     return t
 
 
@@ -103,9 +103,9 @@ def rydberg_pulse(t, duration, on_beams=None):
     """
     on_beams = [True, True] if on_beams is None else on_beams
     if on_beams[0]:
-        pulse(t, duration, Ryd685_switch)
+        pulse(t, duration, ryd685_switch)
     if on_beams[1]:
-        pulse(t, duration, Ryd595_switch)
+        pulse(t, duration, ryd595_switch)
 
     t += duration
 
@@ -124,33 +124,33 @@ def initialize(t):
         t (float): End time, equal to start time
     """
     for channel in hsdio_channels:
-        if channel in shutter_switches:
+        if channel in shutters:
             channel(t, 1)
         else:
             channel(t, 0)
 
-    vODT_switch(t, 1)
-    vODT_power(t, vertTrapPower)
-    Ryd685_switch(t, 0)
-    Ryd595_switch(t, 1)
+    trap_switch(t, 1)
+    trap_amplitude(t, vertTrapPower)
+    ryd685_switch(t, 0)
+    ryd595_switch(t, 1)
     RP_Shutter_switch_init(t, 1)
     Cooling_Shutter_switch_init(t, 1)
     OP_Shutter_switch_init(t, 0)
     OP_RP_Shutter_switch_init(t, 0)
-    OP_switch(t, 0)
+    optical_pumping_switch(t, 0)
     Blowaway_Shutter_switch_init(t, 0)
-    SPCM_gate(t, 0)
+    counter_gate(t, 0)
     Collection_Shutter_switch_init(t, 0)
-    uW_switch(t, 0)
-    MOT_Andor_Trig(t, 0)
-    Hamamatsu_Trig(t, 0)
-    NIDAQ_Trig(t, 0)
-    NIScope_Trig(t, 0)
-    HF_switch(t, 1)
-    D2_switch(t, 1)
-    D2_DDS(t, 'MOT')
-    biasAO(t, MOT_shim)
-    switchcoils(t, True)
+    microwave_switch(t, 0)
+    andor_trigger(t, 0)
+    hamamatsu_trigger(t, 0)
+    nidaq_trigger(t, 0)
+    ni_scope_trigger(t, 0)
+    repumper_switch(t, 1)
+    d2_switch(t, 1)
+    d2_dds(t, 'MOT')
+    bias_shims(t, MOT_shim)
+    quadrupole_coil_switch(t, True)
 
     return t
 
@@ -166,21 +166,21 @@ def calibration(t, calibration_time=6):
         t (float): End time (ms)
     """
     # Ensure collection shutter is off
-    Collection_Shutter_switch(t, 0)
+    collection_shutter(t, 0)
     t += Collection_Shutter_delay_off
 
     # Turn on cooling beam
-    Cooling_Shutter_switch(t, 1)
-    D2_switch(t, 1)
-    D2_DDS(t, 'MOT')
+    d2_shutter(t, 1)
+    d2_switch(t, 1)
+    d2_dds(t, 'MOT')
 
     # turn off the Repumper
-    HF_switch(t, 0)
-    HF_amplitude(t, 0)
+    repumper_switch(t, 0)
+    repumper_amplitude(t, 0)
 
     # Open all switchyard shutters
-    close_shutters(t, delay=False, closeXZShutter=0, closeYShutter=0, closeY2Shutter=0,
-                   closeXShutter=0)
+    close_shutters(t, delay=False, xz_closed=0, y_closed=0, y2_closed=0,
+                   x_closed=0)
 
     # pulse on rydberg beams
     rydberg_pulse(t, calibration_time)
@@ -213,26 +213,25 @@ def mot_loading(t, duration, trigger_andor=True, keep_quadrupole=False):
         t: time after which the MOT phase will have been com
     """
     ts = t
-    HF_switch(t, 1)
-    D2_switch(t, 1)
+    repumper_switch(t, 1)
+    d2_switch(t, 1)
     # HF_switch(t,0)
     # D2_switch(t,0)
-    D2_DDS(t, 'MOT')
-    biasAO(t, MOT_shim)
-    switchcoils(t, True)
+    d2_dds(t, 'MOT')
+    bias_shims(t, MOT_shim)
+    quadrupole_coil_switch(t, True)
 
-    HF_amplitude(t, MOT_hyperfine_power)
+    repumper_amplitude(t, MOT_hyperfine_power)
     t += duration
 
     if not keep_quadrupole:
-        switchcoils(t - .3, False)
+        quadrupole_coil_switch(t - .3, False)
     if trigger_andor:
         if t - AndorExpT < ts:
             tAnd = ts
         else:
             tAnd = t - AndorExpT
-        MOT_Andor_Trig(tAnd, 1)
-        MOT_Andor_Trig(tAnd + 1, 0)
+        pulse(t, 1, andor_trigger)
     return t
 
 
@@ -250,12 +249,12 @@ def pgc1(t, duration, trap_delay, trap_on=True, chop=True):
     Returns:
         t (float): End time (ms)
     """
-    t = biasAO(t, PGC1_shim)
-    D2_DDS(t, 'PGC1')
-    HF_amplitude(t, PGC_1_hyperfine_power)
-    vODT_power(t + trap_delay, vertTrapPower)
+    t = bias_shims(t, PGC1_shim)
+    d2_dds(t, 'PGC1')
+    repumper_amplitude(t, PGC_1_hyperfine_power)
+    trap_amplitude(t + trap_delay, vertTrapPower)
 
-    vODT_switch(t + trap_delay, trap_on)
+    trap_switch(t + trap_delay, trap_on)
     if chop:
         print "Chopped loading enabled"
         t = chopped_d2_trap(t, duration, period=2.1e-3, d2_duty_cycle=(.01, .5),
@@ -264,7 +263,7 @@ def pgc1(t, duration, trap_delay, trap_on=True, chop=True):
         t += duration
 
     # If coils were on, they're switched off, otherwise just a redundant command, for free.
-    switchcoils(t - .3, False)
+    quadrupole_coil_switch(t - .3, False)
     return t
 
 
@@ -278,12 +277,12 @@ def pgc2(t, duration):
     Returns:
         t (float): End time (ms)
     """
-    t = biasAO(t, PGC2_shim)
-    D2_DDS(t, 'PGC2')
-    D2_switch(t, 1)
-    HF_switch(t, 1)
-    RP_Shutter_switch(t-RP_Shutter_delay_on, 1)
-    HF_amplitude(t, PGC_1_hyperfine_power)
+    t = bias_shims(t, PGC2_shim)
+    d2_dds(t, 'PGC2')
+    d2_switch(t, 1)
+    repumper_switch(t, 1)
+    repumper_shutter(t - RP_Shutter_delay_on, 1)
+    repumper_amplitude(t, PGC_1_hyperfine_power)
     t += duration
     return t
 
@@ -301,11 +300,11 @@ def light_assisted_collisions(t, duration):
     """
 
     # start LAC at t
-    t = biasAO(t, LAC_shim)
-    D2_DDS(t, 'LAC')
-    D2_switch(t, 1)
-    HF_amplitude(t, LAC_hyperfine_power)
-    HF_switch(t, 1)
+    t = bias_shims(t, LAC_shim)
+    d2_dds(t, 'LAC')
+    d2_switch(t, 1)
+    repumper_amplitude(t, LAC_hyperfine_power)
+    repumper_switch(t, 1)
 
     t += duration
     return t
@@ -321,24 +320,24 @@ def recool(t, recool_time):
     Returns:
         t (float): end time (ms)
     """
-    D2_DDS(t, 'Recool')
-    t = biasAO(t, Recool_shim)
+    d2_dds(t, 'Recool')
+    t = bias_shims(t, Recool_shim)
 
     # turn on the D2 and HF AOMs
-    D2_switch(t, 1)
-    HF_switch(t, 1)
+    d2_switch(t, 1)
+    repumper_switch(t, 1)
 
     # open the X and Z shutters
     # closeShutters(t-8.5, False,False,False,delay=False)
-    HF_amplitude(t, Recool_hyperfine_power)
+    repumper_amplitude(t, Recool_hyperfine_power)
     t += recool_time
 
     # set the shutters to the RO configuration
     # closeShutters(t, closeXShutter,closeYShutter,closeZShutter,delay=False)
 
     # turn off the D2 and HF AOMs
-    D2_switch(t, 0)
-    HF_switch(t, 0)
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
     t += 0.01
 
     return t
@@ -380,7 +379,7 @@ def fluorescence_readout(
         t (float): end time
     """
     if ROPowerToggle:
-        vODT_power(t - vertTrapPowerROPret, vertTrapPowerRO)
+        trap_amplitude(t - vertTrapPowerROPret, vertTrapPowerRO)
 
     # time per bin - Counter and SPCM are gated individually
     RO_bin_width = OnTime / float(RO_bins) / 2
@@ -394,31 +393,31 @@ def fluorescence_readout(
     # set up pre-pulse dump bins
     tt = t - 2 * RO_bin_width * (drops)  # -1)
     for i in range(drops):
-        SPCM_clock(tt, 1)
-        SPCM_gate(tt, 1)
+        counter_clock(tt, 1)
+        counter_gate(tt, 1)
         tt += RO_bin_width
-        SPCM_clock(tt, 0)
-        SPCM_gate(tt, 0)
+        counter_clock(tt, 0)
+        counter_gate(tt, 0)
         tt += RO_bin_width
     # t-=2*RO_bin_width
 
     # turn on pulse light
     # FORT_DDS(t,"FORTRO")
     # BiasAO and Set shutters to desired state all at once to minimize delays
-    biasAO(t + ROShimTimeOffset, RO1_shim)
-    Collection_Shutter_switch(t - Collection_Shutter_delay_on, 1)
+    bias_shims(t + ROShimTimeOffset, RO1_shim)
+    collection_shutter(t - Collection_Shutter_delay_on, 1)
     if shuttersclosed is None:
         shuttersclosed = [1]*4
-    t = close_shutters(t, closeXZShutter=shuttersclosed[0], closeYShutter=shuttersclosed[1],
-                       closeY2Shutter=shuttersclosed[2], closeXShutter=shuttersclosed[3])
+    t = close_shutters(t, xz_closed=shuttersclosed[0], y_closed=shuttersclosed[1],
+                       y2_closed=shuttersclosed[2], x_closed=shuttersclosed[3])
 
     # Turn on lasers
-    D2_DDS(t, 'RO')
-    D2_switch(t, 1)
-    Cooling_Shutter_switch(t - Cooling_Shutter_delay_on, 1)
-    RP_Shutter_switch(t - RP_Shutter_delay_on, 1)
-    HF_switch(t, 1)
-    HF_amplitude(t - 0.1, RO1_hyperfine_power)
+    d2_dds(t, 'RO')
+    d2_switch(t, 1)
+    d2_shutter(t - Cooling_Shutter_delay_on, 1)
+    repumper_shutter(t - RP_Shutter_delay_on, 1)
+    repumper_switch(t, 1)
+    repumper_amplitude(t - 0.1, RO1_hyperfine_power)
 
     if chop:
         # TODO : Check out behavior of chopping phase
@@ -429,35 +428,35 @@ def fluorescence_readout(
     # trigger cameras
     ChipAndorOffset = -0.2
 
-    MOT_Andor_Trig(t,trigger_andor)
-    MOT_Andor_Trig(t+1,0)
-    Hamamatsu_Trig(t+Hamamatsu_Trig_Shim, trigger_hm)
-    Hamamatsu_Trig(t+Hamamatsu_Trig_Shim+OnTime, 0)
+    andor_trigger(t, trigger_andor)
+    andor_trigger(t + 1, 0)
+    hamamatsu_trigger(t + Hamamatsu_Trig_Shim, trigger_hm)
+    hamamatsu_trigger(t + Hamamatsu_Trig_Shim + OnTime, 0)
 
     t += 2 * RO_bin_width
 
     # SPCM bins
     tt = t
     for i in range(SPCM_bins):
-        SPCM_gate(tt, 1)
+        counter_gate(tt, 1)
         tt += SPCM_bin_width
         tt += SPCM_bin_width
-        SPCM_gate(tt - 0.01, 0)
+        counter_gate(tt - 0.01, 0)
 
     # Counter bins
     for i in range(RO_bins):
-        SPCM_clock(t, 1)
+        counter_clock(t, 1)
         t += RO_bin_width
-        SPCM_clock(t, 0)
+        counter_clock(t, 0)
         t += RO_bin_width
     t -= 2 * RO_bin_width
 
 
     # turn off lasers, and done.
-    D2_switch(t, 0)
-    HF_switch(t, 0)
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
     if returnPower:
-        vODT_power(t, vertTrapPower)
+        trap_amplitude(t, vertTrapPower)
 
     return max(t, tend)
 
@@ -477,11 +476,11 @@ def blowaway(t, duration, shutter_states=None, chopTrap=False):
         t (float): End time (ms)
     """
     shutter_states = [False] * 4 if shutter_states is None else shutter_states
-    D2_DDS(t, 'BA')
-    biasAO(t, RO1_shim)
-    D2_switch(t, 1)
-    Cooling_Shutter_switch(t - Cooling_Shutter_delay_on - 0.5, 1)
-    RP_Shutter_switch(t - RP_Shutter_delay_off, 0)
+    d2_dds(t, 'BA')
+    bias_shims(t, RO1_shim)
+    d2_switch(t, 1)
+    d2_shutter(t - Cooling_Shutter_delay_on - 0.5, 1)
+    repumper_shutter(t - RP_Shutter_delay_off, 0)
 
     # closeShutters(t-1.5,*shuttersclosed)
     tp = t
@@ -489,8 +488,8 @@ def blowaway(t, duration, shutter_states=None, chopTrap=False):
         tp = chopped_trap(tp, duration, period=0.005,
                           trap_duty_cycle=(0.15, 0.2))
     t += duration
-    D2_switch(t, 0)
-    RP_Shutter_switch(t - RP_Shutter_delay_off * 1, 1)
+    d2_switch(t, 0)
+    repumper_shutter(t - RP_Shutter_delay_off * 1, 1)
     return t + .001
 
 
@@ -512,9 +511,9 @@ def shelve_and_blowaway(t, sTime, sState, blowaway=True, toRO=True):
     Returns:
         t (float): End time (ms)
     """
-    D2_DDS(t, 'Recool')
-    close_shutters(t, delay=True, closeXZShutter=0, closeYShutter=0, closeY2Shutter=0,
-                   closeXShutter=0)
+    d2_dds(t, 'Recool')
+    close_shutters(t, delay=True, xz_closed=0, y_closed=0, y2_closed=0,
+                   x_closed=0)
     t += 1
     tt = t + 10
     assert sState == 3 or sState == 4
@@ -526,33 +525,33 @@ def shelve_and_blowaway(t, sTime, sState, blowaway=True, toRO=True):
             sState = 4
 
     if sState == 4:
-        HF_switch(t, 1)
+        repumper_switch(t, 1)
         t += sTime
-        HF_switch(t, 0)
+        repumper_switch(t, 0)
     else:
-        biasAO(t, Recool_shim)
-        D2_switch(t, 1)
+        bias_shims(t, Recool_shim)
+        d2_switch(t, 1)
         t += abs(sTime)
-        D2_switch(t, 0)
+        d2_switch(t, 0)
 
     if t < tt:
         t = tt
 
     t += RP_Shutter_delay_off + 1
     if blowaway:
-        close_shutters(t, delay=True, closeXZShutter=1, closeYShutter=0, closeY2Shutter=1,
-                       closeXShutter=0)
+        close_shutters(t, delay=True, xz_closed=1, y_closed=0, y2_closed=1,
+                       x_closed=0)
         t += 1
-        RP_Shutter_switch(t - RP_Shutter_delay_off, 0)
-        biasAO(t, RO1_shim)
-        D2_DDS(t - 0.01, 'RO')
-        D2_DDS(t, 'BA')
-        D2_switch(t, 1)
-        Cooling_Shutter_switch(t - Cooling_Shutter_delay_on, 1)
+        repumper_shutter(t - RP_Shutter_delay_off, 0)
+        bias_shims(t, RO1_shim)
+        d2_dds(t - 0.01, 'RO')
+        d2_dds(t, 'BA')
+        d2_switch(t, 1)
+        d2_shutter(t - Cooling_Shutter_delay_on, 1)
         t += Blow_Away_time
-        D2_switch(t, 0)
+        d2_switch(t, 0)
         t += RP_Shutter_delay_on
-        RP_Shutter_switch(t - RP_Shutter_delay_on, 1)
+        repumper_shutter(t - RP_Shutter_delay_on, 1)
     if toRO:
         t = trap_in_dark(t, 4)
         close_shutters(t, delay=True)
@@ -574,11 +573,11 @@ def optical_pumping(t, duration, shelve_time=0, chop=True):
     Returns:
         t (float): End time (ms)
     """
-    Cooling_Shutter_switch(t - Cooling_Shutter_delay_off * 3, 0)
-    close_shutters(t - 2, closeXZShutter=1, closeYShutter=1, closeY2Shutter=1, closeXShutter=1)
-    OP_Shutter_switch(t - OP_Shutter_delay_on, 1)
-    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
-    RP_Shutter_switch(t - RP_Shutter_delay_on, 1)
+    d2_shutter(t - Cooling_Shutter_delay_off * 3, 0)
+    close_shutters(t - 2, xz_closed=1, y_closed=1, y2_closed=1, x_closed=1)
+    optical_pumping_shutter(t - OP_Shutter_delay_on, 1)
+    op_repumper_shutter(t - OP_RP_Shutter_delay_on, 1)
+    repumper_shutter(t - RP_Shutter_delay_on, 1)
 
     if chop:
         # vODT_power(t,vertTrapPowerChop)
@@ -586,11 +585,11 @@ def optical_pumping(t, duration, shelve_time=0, chop=True):
                      trap_duty_cycle=(0.2, 0.41))
 
     # Chip_Andor_Trig(t,1)
-    HF_switch(t, 1)
-    OP_switch(t, 1)
-    D2_switch(t, 0)
-    HF_amplitude(t, OP_HF_amplitude)
-    biasAO(t, OP_shim)
+    repumper_switch(t, 1)
+    optical_pumping_switch(t, 1)
+    d2_switch(t, 0)
+    repumper_amplitude(t, OP_HF_amplitude)
+    bias_shims(t, OP_shim)
 
     t += duration
     print duration
@@ -598,27 +597,27 @@ def optical_pumping(t, duration, shelve_time=0, chop=True):
     HF_off_delay = 0.027
     if shelve_time >= 0:
         if shelve_time > 0:
-            RP_Shutter_switch(t - RP_Shutter_delay_off, 0)
-        OP_RP_Shutter_switch(t, 0)
-        HF_switch(t, 0)
-        HF_amplitude(t + HF_off_delay, 0)
+            repumper_shutter(t - RP_Shutter_delay_off, 0)
+        op_repumper_shutter(t, 0)
+        repumper_switch(t, 0)
+        repumper_amplitude(t + HF_off_delay, 0)
     else:
-        OP_Shutter_switch(t, 0)
-        OP_switch(t, 0)
+        optical_pumping_shutter(t, 0)
+        optical_pumping_switch(t, 0)
 
     t += abs(shelve_time)
 
     if shelve_time >= 0:
-        OP_Shutter_switch(t, 0)
-        OP_switch(t, 0)
+        optical_pumping_shutter(t, 0)
+        optical_pumping_switch(t, 0)
     else:
-        RP_Shutter_switch(t - RP_Shutter_delay_off, 0)
-        OP_RP_Shutter_switch(t, 0)
-        HF_switch(t, 0)
-        HF_amplitude(t + HF_off_delay, 0)
+        repumper_shutter(t - RP_Shutter_delay_off, 0)
+        op_repumper_shutter(t, 0)
+        repumper_switch(t, 0)
+        repumper_amplitude(t + HF_off_delay, 0)
     # Chip_Andor_Trig(t,0)
     # biasAO(t,RO1_shim)
-    vODT_power(t, vertTrapPower)
+    trap_amplitude(t, vertTrapPower)
     return t
 
 
@@ -636,37 +635,37 @@ def op_shelve(t, shelve_time=0, chop=True):
     Returns:
         t (float): End time (ms)
     """
-    Cooling_Shutter_switch(t - Cooling_Shutter_delay_off, 0)
-    close_shutters(t, closeXZShutter=1, closeYShutter=1, closeY2Shutter=1, closeXShutter=1)
-    D2_switch(t, 0)
-    biasAO(t, OP_shim)
+    d2_shutter(t - Cooling_Shutter_delay_off, 0)
+    close_shutters(t, xz_closed=1, y_closed=1, y2_closed=1, x_closed=1)
+    d2_switch(t, 0)
+    bias_shims(t, OP_shim)
 
     if chop:
-        vODT_power(t, vertTrapPowerChop)
+        trap_amplitude(t, vertTrapPowerChop)
         chopped_trap(t, OP_time + abs(shelve_time), period=1e-3)
 
     if shelve_time < 0:
-        RP_Shutter_switch(t - RP_Shutter_delay_on, 1)
-        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
-        HF_switch(t, 1)
-        HF_amplitude(t, OP_HF_amplitude)
+        repumper_shutter(t - RP_Shutter_delay_on, 1)
+        op_repumper_shutter(t - OP_RP_Shutter_delay_on, 1)
+        repumper_switch(t, 1)
+        repumper_amplitude(t, OP_HF_amplitude)
     else:
-        OP_Shutter_switch(t - OP_Shutter_delay_on, 1)
-        OP_switch(t, 1)
+        optical_pumping_shutter(t - OP_Shutter_delay_on, 1)
+        optical_pumping_switch(t, 1)
 
     t += abs(shelve_time)
 
     if shelve_time >= 0:
-        OP_Shutter_switch(t, 0)
-        OP_switch(t, 0)
+        optical_pumping_shutter(t, 0)
+        optical_pumping_switch(t, 0)
     else:
-        RP_Shutter_switch(t, 0)
-        OP_RP_Shutter_switch(t, 0)
-        HF_switch(t, 0)
-        HF_amplitude(t, 0)
+        repumper_shutter(t, 0)
+        op_repumper_shutter(t, 0)
+        repumper_switch(t, 0)
+        repumper_amplitude(t, 0)
     # Chip_Andor_Trig(t,0)
-    biasAO(t, RO1_shim)
-    vODT_power(t, vertTrapPower)
+    bias_shims(t, RO1_shim)
+    trap_amplitude(t, vertTrapPower)
     return t
 
 
@@ -694,8 +693,8 @@ def rabi_flopping_experiment(t, pumping_time, clock_time, blowaway_time, clock_d
         print "Experiment longer than 10 ms."
         t += 2.8
     t = blowaway(t, blowaway_time)
-    D2_switch(t, 0)
-    D2_DDS(t, 'RO')
+    d2_switch(t, 0)
+    d2_dds(t, 'RO')
     return t + .01
 
 
@@ -729,18 +728,18 @@ def counterreadout(
     tt = t - 2 * RO_bin_width * (drops - 1)
     # t = SPCMPulse(t,drops,RO_bin_width*2)
     for i in range(drops):
-        SPCM_clock(tt, 1)
+        counter_clock(tt, 1)
         tt += RO_bin_width
-        SPCM_clock(tt, 0)
+        counter_clock(tt, 0)
         tt += RO_bin_width
     # t-=2*RO_bin_width
 
     # counter bins
     t += 2 * RO_bin_width
     for i in range(RO_bins):
-        SPCM_clock(t, 1)
+        counter_clock(t, 1)
         t += RO_bin_width
-        SPCM_clock(t, 0)
+        counter_clock(t, 0)
         t += RO_bin_width
     t -= 2 * RO_bin_width
     # SPCMPulse(t,RO_bins,RO_bin_width*2)
@@ -761,9 +760,9 @@ def one_chop_andor(t, period=2e-3, duty_cycle=None):
         t (float): end time (ms)
     """
     duty_cycle = [0, .5] if duty_cycle is None else duty_cycle
-    MOT_Andor_Trig(t, 0)
-    MOT_Andor_Trig(t + duty_cycle[0] * period, 1)
-    MOT_Andor_Trig(t + duty_cycle[1] * period, 0)
+    andor_trigger(t, 0)
+    andor_trigger(t + duty_cycle[0] * period, 1)
+    andor_trigger(t + duty_cycle[1] * period, 0)
     return t + period
 
 
@@ -783,12 +782,12 @@ def one_chop_readout(t, period=2e-3, d2_duty_cycle=None, trap_duty_cycle=None):
     """
     d2_duty_cycle = [0, .5] if d2_duty_cycle is None else d2_duty_cycle
     trap_duty_cycle = [0, .5] if trap_duty_cycle is None else trap_duty_cycle
-    D2_switch(t, 0)
-    vODT_switch(t, 0)
-    D2_switch(t + d2_duty_cycle[0] * period, 1)
-    D2_switch(t + d2_duty_cycle[1] * period, 0)
-    vODT_switch(t + trap_duty_cycle[0] * period, 1)
-    vODT_switch(t + trap_duty_cycle[1] * period, 0)
+    d2_switch(t, 0)
+    trap_switch(t, 0)
+    d2_switch(t + d2_duty_cycle[0] * period, 1)
+    d2_switch(t + d2_duty_cycle[1] * period, 0)
+    trap_switch(t + trap_duty_cycle[0] * period, 1)
+    trap_switch(t + trap_duty_cycle[1] * period, 0)
     return t + period
 
 
@@ -805,9 +804,9 @@ def one_chop_trap(t, period=2e-3, trap_duty_cycle=None):
         t (float): end time (ms)
     """
     trap_duty_cycle = [0., 0.5] if trap_duty_cycle is None else trap_duty_cycle
-    vODT_switch(t, 1)
-    vODT_switch(t + trap_duty_cycle[0] * period, 0)
-    vODT_switch(t + trap_duty_cycle[1] * period, 1)
+    trap_switch(t, 1)
+    trap_switch(t + trap_duty_cycle[0] * period, 0)
+    trap_switch(t + trap_duty_cycle[1] * period, 1)
     return t + period
 
 
@@ -823,9 +822,9 @@ def one_chop_op(t, period=2e-3, op_duty_cycle=None):
         t (float): end time (ms)
     """
     op_duty_cycle = [0, .5] if op_duty_cycle is None else op_duty_cycle
-    OP_switch(t, 0)
-    OP_switch(t + op_duty_cycle[0] * period, 1)
-    OP_switch(t + op_duty_cycle[1] * period, 0)
+    optical_pumping_switch(t, 0)
+    optical_pumping_switch(t + op_duty_cycle[0] * period, 1)
+    optical_pumping_switch(t + op_duty_cycle[1] * period, 0)
     return t + period
 
 
@@ -840,9 +839,9 @@ def one_pulse_counter_bin(t, period):
         t (float): End time (ms)
     """
 
-    SPCM_clock(t, 0)
-    SPCM_clock(t + 0.25 * period, 1)
-    SPCM_clock(t + 0.75 * period, 0)
+    counter_clock(t, 0)
+    counter_clock(t + 0.25 * period, 1)
+    counter_clock(t + 0.75 * period, 0)
     return t + period
 
 
@@ -858,7 +857,7 @@ def end_chop_op(t, period=2e-3):
     """
     print t  # TODO : logging
     t += period * 2
-    OP_switch(t, 0)
+    optical_pumping_switch(t, 0)
     return t
 
 
@@ -874,8 +873,8 @@ def end_chop_ro(t, period=2e-3):
     """
     print t  # TODO : logging
     t += period * 2
-    D2_switch(t, 0)
-    vODT_switch(t, 1)
+    d2_switch(t, 0)
+    trap_switch(t, 1)
     return t
 
 
@@ -891,7 +890,7 @@ def end_chop_trap(t, period=2e-3):
     """
     print t  # TODO : logging
     t += period * 2
-    vODT_switch(t, 1)
+    trap_switch(t, 1)
     return t
 
 

@@ -194,7 +194,15 @@ def calibration(t, calibration_time=6):
 
 
 # Loading Phases -----------------------------------------------------------------------------------
-def mot_loading(t, duration, trigger_andor=True, keep_quadrupole=False):
+def mot_loading(
+        t,
+        duration,
+        hf_power,
+        shim_fields,
+        mot_current,
+        trigger_andor=True,
+        exposure_time=50,
+        keep_quadrupole=False):
     """
     MOT loading phase.
 
@@ -202,157 +210,200 @@ def mot_loading(t, duration, trigger_andor=True, keep_quadrupole=False):
     Args:
         t (float): Start time (ms)
         duration (float): duration of MOT loading phase (ms)
+        hf_power (float): voltage to be applied to the repumper VVA (V)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
+        mot_current (float): Desired current through the quadrupole coils during the MOT
+            phase (A)
         trigger_andor (bool): If true Andor is triggered during the MOT phase
             If true the andor trigger will occur AndorExpT ms before the end of the MOT phase,
             unless that would occur before the start of the MOT phase. In that case the trigger
             occurs at the start of the MOT phase
+        exposure_time (float): exposure time of the Andor camera. Does nothing if trigger_andor
+            is False. (ms)
         keep_quadrupole (bool) : If true quadrupole field coils will be kept on at the end of this
             phase
 
     Returns:
         t: time after which the MOT phase will have been com
     """
-    ts = t
-    repumper_switch(t, 1)
-    d2_switch(t, 1)
-    # HF_switch(t,0)
-    # D2_switch(t,0)
-    d2_dds(t, 'MOT')
-    bias_shims(t, MOT_shim)
-    quadrupole_coil_switch(t, True)
+    t_initial = t
+    # Delay doesn't matter, don't update time to reduce cycle time
+    bias_shims(t, shim_fields)
+    quadrupole_coil_switch(t, True, mot_current)
 
-    repumper_amplitude(t, MOT_hyperfine_power)
+    d2_dds(t, 'MOT')
+    d2_switch(t, 1)
+
+    repumper_switch(t, 1)
+    repumper_amplitude(t, hf_power)
+
     t += duration
 
+    # Turn off beams to leave AO timing shims in future phases
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
+
     if not keep_quadrupole:
-        quadrupole_coil_switch(t - .3, False)
+        quadrupole_coil_switch(t - .3, False, 0)
+
     if trigger_andor:
-        if t - AndorExpT < ts:
-            tAnd = ts
-        else:
-            tAnd = t - AndorExpT
-        pulse(t, 1, andor_trigger)
+        trigger_time = t - exposure_time
+        if trigger_time < t_initial:
+            trigger_time = t_initial
+        pulse(trigger_time, 1, andor_trigger)
     return t
 
 
-def pgc1(t, duration, trap_delay, trap_on=True, chop=True):
+def pgc1(
+        t,
+        duration,
+        hf_power,
+        shim_fields,
+        trap_delay,
+        trap_on=True,
+        chop=True):
     """
     PGC1 phase to achieve quick, sub-doppler cooling
     Args:
         t (float): Start time (ms)
         duration (float): Duration of PGC1 phase (ms)
+        hf_power (float): voltage to be applied to the repumper VVA (V)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
         trap_delay (float): Delay time for turning on the FORT (ms)
         trap_on (bool): If true, FORT is on during PGC phase
         chop (bool): If true, FORT and D2 laser are chopped during PGC phase
-        coils_on (bool): If true, MOT quadrupole field is kept on during PGC1 phase
 
     Returns:
         t (float): End time (ms)
     """
-    t = bias_shims(t, PGC1_shim)
+    t = bias_shims(t, shim_fields)
     d2_dds(t, 'PGC1')
-    repumper_amplitude(t, PGC_1_hyperfine_power)
-    trap_amplitude(t + trap_delay, vertTrapPower)
+    d2_switch(t, 1)
+    repumper_switch(t, 1)
+    repumper_amplitude(t, hf_power)
 
     trap_switch(t + trap_delay, trap_on)
     if chop:
         print "Chopped loading enabled"
-        t = chopped_d2_trap(t, duration, period=2.1e-3, d2_duty_cycle=(.01, .5),
-                        trap_duty_cycle=(0.27, .72))
+        t = chopped_d2_trap(
+            t,
+            duration,
+            period=2.1e-3,
+            d2_duty_cycle=(.01, .5),
+            trap_duty_cycle=(0.27, .72))
     else:
         t += duration
 
+    # Turn off beams to leave AO timing shims in future phases
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
+
     # If coils were on, they're switched off, otherwise just a redundant command, for free.
-    quadrupole_coil_switch(t - .3, False)
+    quadrupole_coil_switch(t - .3, False, 0)
     return t
 
 
-def pgc2(t, duration):
+def pgc2(t, duration, hf_power, shim_fields):
     """
     Secondary PGC phase to further reduce atom cloud temperature, albeit more slowly
     Args:
         t (float): Start time (ms)
         duration (float): duration of PGC2 phase (ms)
+        hf_power (float): voltage to be applied to the repumper VVA (V)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
 
     Returns:
         t (float): End time (ms)
     """
-    t = bias_shims(t, PGC2_shim)
+    t = bias_shims(t, shim_fields)
     d2_dds(t, 'PGC2')
     d2_switch(t, 1)
     repumper_switch(t, 1)
-    repumper_shutter(t - RP_Shutter_delay_on, 1)
-    repumper_amplitude(t, PGC_1_hyperfine_power)
+    repumper_amplitude(t, hf_power)
     t += duration
+
+    # Turn off beams to leave AO timing shims in future phases
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
+
     return t
 
 
 # in-trap d2 phases --------------------------------------------------------------------------------
-def light_assisted_collisions(t, duration):
+def light_assisted_collisions(t, duration, hf_power, shim_fields):
     """
     Light Assisted Collision Phase
     Args:
         t (float): Start time (ms)
         duration (float): Duration of LAC phase (ms)
+        hf_power (float): voltage to be applied to the repumper VVA (V)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
 
     Returns:
         t (float): End time (ms)
     """
 
     # start LAC at t
-    t = bias_shims(t, LAC_shim)
+    t = bias_shims(t, shim_fields)
     d2_dds(t, 'LAC')
     d2_switch(t, 1)
-    repumper_amplitude(t, LAC_hyperfine_power)
     repumper_switch(t, 1)
+    repumper_amplitude(t, hf_power)
 
     t += duration
+
+    # Turn off beams to leave AO timing shims in future phases
+    d2_switch(t, 0)
+    repumper_switch(t, 0)
+
     return t
 
 
-def recool(t, recool_time):
+def recool(t, duration, hf_power, shim_fields):
     """
     Phase to cool atoms in the trap
     Args:
         t (float): start time (ms)
-        recool_time (float): duration (ms)
+        duration (float): duration (ms)
+        hf_power (float): voltage to be applied to the repumper VVA (V)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
 
     Returns:
         t (float): end time (ms)
     """
-    d2_dds(t, 'Recool')
-    t = bias_shims(t, Recool_shim)
+    t_shutters = close_shutters(t)  # Open all the shutters, delay experiment until all are open
+    t_shim = bias_shims(t, shim_fields)
+    t = max(t_shim, t_shutters)
 
-    # turn on the D2 and HF AOMs
+    d2_dds(t, 'Recool')
     d2_switch(t, 1)
     repumper_switch(t, 1)
+    repumper_amplitude(t, hf_power)
 
-    # open the X and Z shutters
-    # closeShutters(t-8.5, False,False,False,delay=False)
-    repumper_amplitude(t, Recool_hyperfine_power)
-    t += recool_time
-
-    # set the shutters to the RO configuration
-    # closeShutters(t, closeXShutter,closeYShutter,closeZShutter,delay=False)
+    t += duration
 
     # turn off the D2 and HF AOMs
     d2_switch(t, 0)
     repumper_switch(t, 0)
-    t += 0.01
 
     return t
 
 
 def fluorescence_readout(
         t,
-        OnTime,
-        RO_bins=30,
-        drops=3,
-        returnPower=True,
+        duration,
+        hf_power,
+        shim_fields,
+        counter_bins=30,
+        drop_bins=3,
+        spcm_bins=30,
         chop=True,
-        shuttersclosed=None,
-        ROPowerToggle=False,
-        SPCM_bins=30,
+        shutter_states=None,
         trigger_andor=False,
         trigger_hm=False
 ):
@@ -360,17 +411,17 @@ def fluorescence_readout(
     Trap centered fluorescence readout
     Args:
         t (float): start time (ms)
-        OnTime (float): duration of readout phase (ms)
-        RO_bins (int): number of Readout bins on the SPCM
-        drops (int): number of Readout bins to drop at the start of readout (additional to RO_bins)
-        returnPower (bool): should trap power be returned to inital power at the end of RO
-            (redundant if ROPowerToggle is false)
-        chop (bool): chop the trap during readout
-        shuttersclosed (list): length 4 list of bools, closes shutters if true [XZ, Y, Y2, X].
-            default is to have all shutters open
-        ROPowerToggle (bool): if true, trap power is reduced during readout
-        SPCM_bins (int): SPCM binning. Only use case is if time-dependent behavior for SPCM
+        duration (float): duration of readout phase (ms)
+        hf_power (float): voltage to be applied to the repumper VVA (V)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
+        counter_bins (int): number of Readout bins on the SPCM
+        drop_bins (int): number of Readout bins to drop at the start of readout (additional to RO_bins)
+        spcm_bins (int): SPCM binning. Only use case is if time-dependent behavior for SPCM
             gating is being debugged
+        chop (bool): chop the trap during readout
+        shutter_states (list): length 4 list of bools, closes shutters if true [XZ, Y, Y2, X].
+            default is to have all shutters open
         trigger_andor (bool): if true, Andor camera is sent a trigger during readout (1ms pulse)
         trigger_hm (bool): if true, Hamamatsu camera is send a trigger during readout (OnTime
             level trigger)
@@ -378,38 +429,29 @@ def fluorescence_readout(
     Returns:
         t (float): end time
     """
-    if ROPowerToggle:
-        trap_amplitude(t - vertTrapPowerROPret, vertTrapPowerRO)
-
+    
     # time per bin - Counter and SPCM are gated individually
-    RO_bin_width = OnTime / float(RO_bins) / 2
-    SPCM_bin_width = OnTime / float(SPCM_bins) / 2
-    print "RO_bins = {}".format(RO_bins)
-    print "RO_bin_width = {}".format(RO_bin_width)
-    print "SPCM_bins = {}".format(SPCM_bins)
-    print "SPCM_bin_width = {}".format(SPCM_bin_width)
-    print drops
+    ro_bin_width = duration / float(counter_bins) / 2
+    spcm_bin_width = duration / float(spcm_bins) / 2
+
+    tt = t - 2 * ro_bin_width * (drop_bins)
+    # BiasAO and Set shutters to desired state all at once to minimize delays
+    bias_shims(t, shim_fields)
+    collection_shutter(t - Collection_Shutter_delay_on, 1)
+    if shutter_states is None:
+        shutter_states = [True] * 4
+    t = close_shutters(t, xz_closed=shutter_states[0], y_closed=shutter_states[1],
+                       y2_closed=shutter_states[2], x_closed=shutter_states[3])
 
     # set up pre-pulse dump bins
-    tt = t - 2 * RO_bin_width * (drops)  # -1)
-    for i in range(drops):
+    for i in range(drop_bins):
         counter_clock(tt, 1)
         counter_gate(tt, 1)
-        tt += RO_bin_width
+        tt += ro_bin_width
         counter_clock(tt, 0)
         counter_gate(tt, 0)
-        tt += RO_bin_width
+        tt += ro_bin_width
     # t-=2*RO_bin_width
-
-    # turn on pulse light
-    # FORT_DDS(t,"FORTRO")
-    # BiasAO and Set shutters to desired state all at once to minimize delays
-    bias_shims(t + ROShimTimeOffset, RO1_shim)
-    collection_shutter(t - Collection_Shutter_delay_on, 1)
-    if shuttersclosed is None:
-        shuttersclosed = [1]*4
-    t = close_shutters(t, xz_closed=shuttersclosed[0], y_closed=shuttersclosed[1],
-                       y2_closed=shuttersclosed[2], x_closed=shuttersclosed[3])
 
     # Turn on lasers
     d2_dds(t, 'RO')
@@ -417,7 +459,7 @@ def fluorescence_readout(
     d2_shutter(t - Cooling_Shutter_delay_on, 1)
     repumper_shutter(t - RP_Shutter_delay_on, 1)
     repumper_switch(t, 1)
-    repumper_amplitude(t - 0.1, RO1_hyperfine_power)
+    repumper_amplitude(t - 0.1, hf_power)
 
     if chop:
         # TODO : Check out behavior of chopping phase
@@ -425,43 +467,38 @@ def fluorescence_readout(
     else:
         tend = 0
 
-    # trigger cameras
-    ChipAndorOffset = -0.2
-
     andor_trigger(t, trigger_andor)
     andor_trigger(t + 1, 0)
     hamamatsu_trigger(t + Hamamatsu_Trig_Shim, trigger_hm)
-    hamamatsu_trigger(t + Hamamatsu_Trig_Shim + OnTime, 0)
+    hamamatsu_trigger(t + Hamamatsu_Trig_Shim + duration, 0)
 
-    t += 2 * RO_bin_width
+    t += 2 * ro_bin_width
 
     # SPCM bins
     tt = t
-    for i in range(SPCM_bins):
+    for i in range(spcm_bins):
         counter_gate(tt, 1)
-        tt += SPCM_bin_width
-        tt += SPCM_bin_width
+        tt += spcm_bin_width
+        tt += spcm_bin_width
         counter_gate(tt - 0.01, 0)
 
     # Counter bins
-    for i in range(RO_bins):
+    for i in range(counter_bins):
         counter_clock(t, 1)
-        t += RO_bin_width
+        t += ro_bin_width
         counter_clock(t, 0)
-        t += RO_bin_width
-    t -= 2 * RO_bin_width
+        t += ro_bin_width
+    t -= 2 * ro_bin_width
 
 
     # turn off lasers, and done.
     d2_switch(t, 0)
     repumper_switch(t, 0)
-    if returnPower:
-        trap_amplitude(t, vertTrapPower)
 
     return max(t, tend)
 
 
-def blowaway(t, duration, shutter_states=None, chopTrap=False):
+def blowaway(t, duration, shim_fields, shutter_states=None, chop_trap=False):
     """
     Switchyard based blowaway phase. Blows away atoms in F=4 ground state manifold
 
@@ -469,22 +506,25 @@ def blowaway(t, duration, shutter_states=None, chopTrap=False):
     Args:
         t (float): Start time (ms)
         duration (float): Duration of blow away phase (ms)
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
         shutter_states (list): list of booleans, which shutters should be closed. [XZ, Y, Y2, X]
-        chopTrap (bool): if true, the trap is chopped during the blow away
+        chop_trap (bool): if true, the trap is chopped during the blow away
 
     Returns:
         t (float): End time (ms)
     """
     shutter_states = [False] * 4 if shutter_states is None else shutter_states
+    close_shutters(t, delay=True, *shutter_states)
     d2_dds(t, 'BA')
-    bias_shims(t, RO1_shim)
+    bias_shims(t, shim_fields)
     d2_switch(t, 1)
     d2_shutter(t - Cooling_Shutter_delay_on - 0.5, 1)
     repumper_shutter(t - RP_Shutter_delay_off, 0)
 
     # closeShutters(t-1.5,*shuttersclosed)
     tp = t
-    if chopTrap:
+    if chop_trap:
         tp = chopped_trap(tp, duration, period=0.005,
                           trap_duty_cycle=(0.15, 0.2))
     t += duration
@@ -493,68 +533,49 @@ def blowaway(t, duration, shutter_states=None, chopTrap=False):
     return t + .001
 
 
-def shelve_and_blowaway(t, sTime, sState, blowaway=True, toRO=True):
+def hf_shelving(t, duration, shim_fields, shelve_state):
     """
     Shelves into either the F=3 or F=4 ground state levels using the D2 and HF lasers (through
         the MOT switchyard) then blows away the atoms in the F=4 level
 
     Args:
         t (float): Start time (ms)
-        sTime (float): duration of shelving pulse. If negative, sState is switched, from 4 to 3
+        duration (float): duration of shelving pulse. If negative, sState is switched, from 4 to 3
         or 3 to 4
-        sState (int): either 3 or 4. Hyperfine level to shelve into. If 3, D2 beam is pulsed
+        shim_fields (list): length 3 list of voltages to be applied to magnetic bias shim
+            controllers. Order [shim_x, shim_y, shim_z]. (V)
+        shelve_state (int): either 3 or 4. Hyperfine level to shelve into. If 3, D2 beam is pulsed
             using the readout parameters, if 4 Repumper  beam is pulsed using the readout parametes
-        blowaway (bool): if true, atoms in the F=4 level are blown away using the switchyard beams
-        toRO (bool): if true, 4ms delay is added, and all shutters are opened
-            # TODO: Make this make sense
 
     Returns:
         t (float): End time (ms)
     """
     d2_dds(t, 'Recool')
-    close_shutters(t, delay=True, xz_closed=0, y_closed=0, y2_closed=0,
-                   x_closed=0)
+    close_shutters(t, delay=True, *[False]*4)
     t += 1
     tt = t + 10
-    assert sState == 3 or sState == 4
-    if sTime < 0:
-        sTime = abs(sTime)
-        if sState == 4:
-            sState = 3
+    assert shelve_state == 3 or shelve_state == 4
+    if duration < 0:
+        duration = abs(duration)
+        if shelve_state == 4:
+            shelve_state = 3
         else:
-            sState = 4
+            shelve_state = 4
 
-    if sState == 4:
+    if shelve_state == 4:
         repumper_switch(t, 1)
-        t += sTime
+        t += duration
         repumper_switch(t, 0)
     else:
-        bias_shims(t, Recool_shim)
+        bias_shims(t, shim_fields)
         d2_switch(t, 1)
-        t += abs(sTime)
+        t += abs(duration)
         d2_switch(t, 0)
 
     if t < tt:
         t = tt
 
     t += RP_Shutter_delay_off + 1
-    if blowaway:
-        close_shutters(t, delay=True, xz_closed=1, y_closed=0, y2_closed=1,
-                       x_closed=0)
-        t += 1
-        repumper_shutter(t - RP_Shutter_delay_off, 0)
-        bias_shims(t, RO1_shim)
-        d2_dds(t - 0.01, 'RO')
-        d2_dds(t, 'BA')
-        d2_switch(t, 1)
-        d2_shutter(t - Cooling_Shutter_delay_on, 1)
-        t += Blow_Away_time
-        d2_switch(t, 0)
-        t += RP_Shutter_delay_on
-        repumper_shutter(t - RP_Shutter_delay_on, 1)
-    if toRO:
-        t = trap_in_dark(t, 4)
-        close_shutters(t, delay=True)
     return t
 
 

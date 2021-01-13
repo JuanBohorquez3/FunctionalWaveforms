@@ -56,12 +56,12 @@ Y_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 11, state)
 Y2_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 8, state)
 X_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 13, not (state))
 RP_Shutter_switch_init = lambda t, state: HSDIO(t, 7,state)
-Cooling_Shutter_switch_init = lambda t, state: HSDIO(t, 12, state)
+Cooling_Shutter_switch_init = lambda t, state: HSDIO(t, 12, not(state))
 OP_Shutter_switch_init = lambda t, state: HSDIO(t, 10, not(not(state)))
 OP_RP_Shutter_switch_init = lambda t, state: HSDIO(t, 6, state)
 Blowaway_Shutter_switch_init = lambda t, state: HSDIO(t, 2, state)  #Not Set!
 Ryd595_Shutter_switch_init = lambda t, state: HSDIO(t, 2, not (state))  #Not Set!
-Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, not(state) )
+Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, state)
 if ShuttersOn:
     XZ_Only_Shutter_switch = XZ_Only_Shutter_switch_init  # Shutter on Z1 Chip Imaging Beam. Used to be HF Shutter
     Y_Only_Shutter_switch = Y_Only_Shutter_switch_init  # Shutter on Z1 Chip Imaging Beam. Used to be HF Shutter
@@ -89,8 +89,8 @@ else:
 
 RP_Shutter_delay_off = 3.1
 RP_Shutter_delay_on = .8
-Cooling_Shutter_delay_on = 2.9
-Cooling_Shutter_delay_off = 1.8
+Cooling_Shutter_delay_on = 4
+Cooling_Shutter_delay_off = 2.8
 OP_Shutter_delay_on = 5.20
 OP_Shutter_delay_off = 1.80
 OP_RP_Shutter_delay_on = 5.1
@@ -111,8 +111,8 @@ X_Shutter_delay_off = 8.1
 Ryd595_Shutter_delay_on = 0.85
 Ryd595_Shutter_delay_off = 3.45
 
-Collection_Shutter_delay_on = 10
-Collection_Shutter_delay_off = 3
+Collection_Shutter_delay_on = 5
+Collection_Shutter_delay_off = 0
 
 BA_Shutter_delay_on = 2.4
 BA_Shutter_delay_off = 1.9
@@ -468,11 +468,17 @@ def TrapCenterFluorescence(t, OnTime, SPCM=True, RO_bins=30, drops=3,
     if ROPowerToggle: vODT_power(t - vertTrapPowerROPret, vertTrapPowerRO)
     RO_bin_width = OnTime / float(RO_bins) / 2
     SPCM_bin_width = OnTime / float(SPCM_bins) / 2
-    print "RO_bins = {}".format(RO_bins)
-    print "RO_bin_width = {}".format(RO_bin_width)
-    print "SPCM_bins = {}".format(SPCM_bins)
-    print "SPCM_bin_width = {}".format(SPCM_bin_width)
-    print drops
+    # print "RO_bins = {}".format(RO_bins)
+    # print "RO_bin_width = {}".format(RO_bin_width)
+    # print "SPCM_bins = {}".format(SPCM_bins)
+    # print "SPCM_bin_width = {}".format(SPCM_bin_width)
+    # print drops
+
+    # Set up shutters and fields
+    Collection_Shutter_switch(t - Collection_Shutter_delay_on, 1)
+    t = biasAO(t, RO1_shim)
+    closeShutters(t-4, shuttersclosed[0], shuttersclosed[1],
+                      shuttersclosed[2], shuttersclosed[3])
 
     # set up pre-pulse dump bins
     tt = t - 2 * RO_bin_width * (drops)  # -1)
@@ -487,12 +493,10 @@ def TrapCenterFluorescence(t, OnTime, SPCM=True, RO_bins=30, drops=3,
         tt += RO_bin_width
     # t-=2*RO_bin_width
 
-    # turn on pulse light
-    # FORT_DDS(t,"FORTRO")
-    Collection_Shutter_switch(t - Collection_Shutter_delay_on, 1)
-    t = biasAO(t + ROShimTimeOffset, RO1_shim)
-    t = closeShutters(t, shuttersclosed[0], shuttersclosed[1],
-                      shuttersclosed[2], shuttersclosed[3])
+    # Collection_Shutter_switch(t - Collection_Shutter_delay_on, 1)
+    # t = biasAO(t + ROShimTimeOffset, RO1_shim)
+    # t = closeShutters(t, shuttersclosed[0], shuttersclosed[1],
+    #                   shuttersclosed[2], shuttersclosed[3])
 
     D2_switch(t, 1)
     Cooling_Shutter_switch(t - Cooling_Shutter_delay_on, 1)
@@ -1152,7 +1156,7 @@ t = LightAssistedCollisions(t, shuttersclosed=[0, 0, 0, 0])
 
 # t = t + 2
 D2_DDS(t, 'Recool')
-t = Recool(t, Recool_time)
+t = Recool(t, Recool_time)  # TODO Uncouple the length of this recool phase from the one between RO
 t = holdinDark(t,Trap_Hold_time/2)
 
 t = closeShutters(t, *closetheshutters)
@@ -1182,19 +1186,20 @@ t+=0.01
 #t = TrapCenterFluorescence(t, LAC_Time, chop=DoChop, RO_bins=RO1_bins,
 #                           drops=RO1_drops, shuttersclosed=closetheshutters,
 #                           ROPowerToggle=ROPowerToggle, SPCM_bins=SPCM_gates)
-
+Collection_Shutter_switch(t-Collection_Shutter_delay_on, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85 + RO_Time, 0)
 t = TrapCenterFluorescence(t, RO_Time, chop=DoChop, RO_bins=RO1_bins,
     drops=RO1_drops, shuttersclosed=closetheshutters,
     ROPowerToggle=ROPowerToggle, SPCM_bins=SPCM_gates)
-#Collection_Shutter_switch(t - Collection_Shutter_delay_off, 0)
+
 
 #Post-RO Recool
-#closeShutters(t,0,0,0,0,delay=False)
-#t=holdinDark(t,X_Shutter_delay_on)
-#t = Recool(t+0.1, Recool_time)
-#closeShutters(t+2,*closetheshutters)
+closeShutters(t,0,0,0,0,delay=False)
+t=holdinDark(t,X_Shutter_delay_on+2.5)
+t0 = t
+t = Recool(t+0.1, 5)
+# closeShutters(t,*closetheshutters,delay=False)
 
 #FORT_DDS(t, "FORTLoading")
 # t=holdinDark(t,uW_time)
@@ -1203,15 +1208,15 @@ t = TrapCenterFluorescence(t, RO_Time, chop=DoChop, RO_bins=RO1_bins,
 
 # drop recapture
 #t = holdinDark(t,1)
-#t = TrapPulseOff(t,DropTime/1000,ODT_on=TrapOn) #comment out
+#t = TrapPulseOff(t,DropTime/1000, ODT_on=TrapOn) #comment out
 #t = holdinDark(t,1)
 
 # closeShutters(t,1,1,1,1)
 # Ryd595_Shutter_switch(t,1)
 # closeShutters(t,*closetheshutters,delay=False)
 
-#t = holdinDark(t,GapTime)						# Retention
-t = TrapPulseOff(t, GapTime, ODT_on=TrapOn) 					# SNR
+t = holdinDark(t,GapTime)						# Retention
+# t = TrapPulseOff(t, GapTime, ODT_on=TrapOn) 					# SNR
 
 # MicrowavePulse(t-.01,0,0.01,uWchop)
 # RydPulse(t,RamseyTime,[False,True])
@@ -1293,16 +1298,17 @@ t = TrapPulseOff(t, GapTime, ODT_on=TrapOn) 					# SNR
 #t = holdinDark(t,X_Shutter_delay_off+11)
 #t = trigZstage(t)
 # t = holdinDark(t,25)
+closeShutters(t-GapTime/2,*closetheshutters,delay=False)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85 + RO_Time, 0)
-TrapPulseOff(t, RO_Time, ODT_on=TrapOn)     #FORT Off/On
+# TrapPulseOff(t, RO_Time, ODT_on=TrapOn)     #FORT Off/On
 t = TrapCenterFluorescence(t, RO_Time, chop=DoChop, RO_bins=RO1_bins,
     drops=RO1_drops, shuttersclosed=closetheshutters,
     ROPowerToggle=ROPowerToggle, SPCM_bins=SPCM_gates)
 Collection_Shutter_switch(t - Collection_Shutter_delay_off, 0)
 
-closeShutters(t, False, False, False, False, delay=False)
-t = holdinDark(t, GapTime)
+closeShutters(t+10, False, False, False, False, delay=False)
+t = holdinDark(t, 25*1.8)
 #t += 20
 t = TrapPulseOff(t, 2, ODT_on=TrapOn)
 
@@ -1310,4 +1316,4 @@ t = TrapPulseOff(t, 2, ODT_on=TrapOn)
 
 t = MOT_load(t,1,False)
 
-
+HF_switch(t, 0)

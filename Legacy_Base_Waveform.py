@@ -32,13 +32,15 @@ def ramp(t1, duration, v1, v2, channel):
 # RF Switches ------------------------------------------------------------------
 
 D2_switch = lambda t, state: HSDIO(t, 19, not (state))
+# D2_switch = lambda t, state: HSDIO(t, 19, 0)  # not (state))
 HF_switch = lambda t, state: HSDIO(t, 18, not (state))
+# HF_switch = lambda t, state: HSDIO(t, 18, not 1)
 vODT_switch = lambda t, state: HSDIO(t, 20, not (state))
-Ryd685_switch = lambda t, state: HSDIO(t, 22, not (state))
-Ryd595_switch = lambda t, state: HSDIO(t, 21, not (state))
+Ryd685_switch = lambda t, state: HSDIO(t, 22, state)
+Ryd595_switch = lambda t, state: HSDIO(t, 21, state)
 chop = lambda t, state: HSDIO(t, 24, state)
 uW_switch = lambda t, state: HSDIO(t, 0, not (state))
-OP_switch = lambda t, state: HSDIO(t, 23, not (state))
+OP_switch = lambda t, state: HSDIO(t, 23, state)
 
 # Instrument Triggers ----------------------------------------------------------
 
@@ -48,20 +50,31 @@ MOT_Andor_Trig = lambda t, state: HSDIO(t, 15, state)
 NIDAQ_Trig = lambda t, state: HSDIO(t, 14, state)
 Hamamatsu_Trig = lambda t, state: HSDIO(t, 31,state)
 MOT_coils_switch = lambda t, state: HSDIO(t, 17, not (state))
-SPCM_gate = lambda t, state: HSDIO(t, 2, state)  #Not Set!
+SPCM_gate = lambda t, state: HSDIO(t, 26, state)
+OP_DDS = lambda t, state: HSDIO(t, 27,state)
 
 # Shutter Switches -------------------------------------------------------------
-XZ_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 25,state)
+XZ_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 25, not state)
+# XZ_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 25, state*0)
 Y_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 11, state)
+# Y_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 11, state*0+1)
 Y2_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 8, state)
+# Y2_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 8, 1)
 X_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 13, not (state))
+# X_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 13, 0)
 RP_Shutter_switch_init = lambda t, state: HSDIO(t, 7,state)
+# RP_Shutter_switch_init = lambda t, state: HSDIO(t, 7,1)
 Cooling_Shutter_switch_init = lambda t, state: HSDIO(t, 12, not(state))
+# Cooling_Shutter_switch_init = lambda t, state: HSDIO(t, 12, 0)
 OP_Shutter_switch_init = lambda t, state: HSDIO(t, 10, not(not(state)))
+# OP_Shutter_switch_init = lambda t, state: HSDIO(t, 10, 1)
 OP_RP_Shutter_switch_init = lambda t, state: HSDIO(t, 6, state)
+# OP_RP_Shutter_switch_init = lambda t, state: HSDIO(t, 6, 1)
 Blowaway_Shutter_switch_init = lambda t, state: HSDIO(t, 2, state)  #Not Set!
 Ryd595_Shutter_switch_init = lambda t, state: HSDIO(t, 2, not (state))  #Not Set!
 Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, state)
+# Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, 0)
+
 if ShuttersOn:
     XZ_Only_Shutter_switch = XZ_Only_Shutter_switch_init  # Shutter on Z1 Chip Imaging Beam. Used to be HF Shutter
     Y_Only_Shutter_switch = Y_Only_Shutter_switch_init  # Shutter on Z1 Chip Imaging Beam. Used to be HF Shutter
@@ -121,6 +134,7 @@ BA_Shutter_delay_off = 1.9
 
 MOT_coilsAO = lambda t, v: AO(t, 0, v)
 HF_amplitude = lambda t, v: AO(t, 3, v)
+# HF_amplitude = lambda t, v: AO(t, 3, 2.6)
 vODT_power = lambda t, v: AO(t, 7, v)
 
 
@@ -293,9 +307,9 @@ def PGC2(t, PGC_2_time):
 #  Params: t: Starting time (ms), Recool_time: Recool time in ms.
 #  Returns: t: Ending time (ms)
 # ------------------------------------------------------------------------
-def Recool(t, recool_time):
+def Recool(t, recool_time, shims):
     D2_DDS(t, 'Recool')
-    t = biasAO(t, Recool_shim)
+    t = biasAO(t, shims)
 
     # turn on the D2 and HF AOMs
     D2_switch(t, 1)
@@ -303,7 +317,7 @@ def Recool(t, recool_time):
 
     # open the X and Z shutters
     # closeShutters(t-8.5, False,False,False,delay=False)
-    HF_amplitude(t, Recool_hyperfine_power)
+    HF_amplitude(t-4, Recool_hyperfine_power)
     t += recool_time
 
     # set the shutters to the RO configuration
@@ -486,10 +500,10 @@ def TrapCenterFluorescence(t, OnTime, SPCM=True, RO_bins=30, drops=3,
     # SPCM_gate(t,1)
     for i in range(drops):
         SPCM_clock(tt, 1)
-        SPCM_gate(tt, 1)
+        # SPCM_gate(tt, 1)
         tt += RO_bin_width
         SPCM_clock(tt, 0)
-        SPCM_gate(tt, 0)
+        # SPCM_gate(tt, 0)
         tt += RO_bin_width
     # t-=2*RO_bin_width
 
@@ -497,14 +511,14 @@ def TrapCenterFluorescence(t, OnTime, SPCM=True, RO_bins=30, drops=3,
     # t = biasAO(t + ROShimTimeOffset, RO1_shim)
     # t = closeShutters(t, shuttersclosed[0], shuttersclosed[1],
     #                   shuttersclosed[2], shuttersclosed[3])
-
+    SPCM_gate(t, 1)
     D2_switch(t, 1)
     Cooling_Shutter_switch(t - Cooling_Shutter_delay_on, 1)
     RP_Shutter_switch(t - RP_Shutter_delay_on, 1)
     HF_switch(t, 1)
     D2_DDS(t, 'RO')
 
-    HF_amplitude(t - 0.1, RO1_hyperfine_power)
+    HF_amplitude(t - 4, RO1_hyperfine_power)
 
     if chop:
         tend = 0  # ChoppedRO(t,OnTime,period=2e-3,RO_onoff=[.01,.5],Trap_onoff=[0.25,.71])
@@ -523,12 +537,12 @@ def TrapCenterFluorescence(t, OnTime, SPCM=True, RO_bins=30, drops=3,
     t += 2 * RO_bin_width
 
     # SPCM bins
-    tt = t
-    for i in range(SPCM_bins):
-        SPCM_gate(tt, 1)
-        tt += SPCM_bin_width
-        tt += SPCM_bin_width
-        SPCM_gate(tt - 0.01, 0)
+    # tt = t
+    # for i in range(SPCM_bins):
+    #     # SPCM_gate(tt, 1)
+    #     tt += SPCM_bin_width
+    #     tt += SPCM_bin_width
+    #     # SPCM_gate(tt - 0.01, 0)
 
     # Counter bins
     for i in range(RO_bins):
@@ -540,7 +554,7 @@ def TrapCenterFluorescence(t, OnTime, SPCM=True, RO_bins=30, drops=3,
     # SPCMPulse(t,RO_bins,RO_bin_width*2)
 
     # turn off lasers, and done.
-    # SPCM_gate(t,0)
+    SPCM_gate(t,0)
     D2_switch(t, 0)
     HF_switch(t, 0)
     # FORT_DDS(t,"FORTLoading")
@@ -1066,6 +1080,7 @@ def switchcoils(t, stat):
 # ---------------------------------------------------------------------------------------------
 def Calibration(t, calTime=3):
     # turn on the MOT Beams:
+    measured_switches = [Ryd595_switch, Ryd685_switch, OP_switch, OP_DDS]
     Cooling_Shutter_switch(t, 1)
     closeShutters(t, 0, 0, 0, 0, delay=False)
     D2_switch(t, 1)
@@ -1073,15 +1088,17 @@ def Calibration(t, calTime=3):
     # turn off the Repumper
     HF_switch(t, 0)
     HF_amplitude(t, 0)
-    Ryd595_switch(t, 1)
+    for sw in measured_switches:
+        sw(t, 1)
 
     t += calTime
     # trigger the NIDAQ
     trigNIDAQ(t)
     t += calTime
 
-    Ryd595_switch(t, 0)
-    Collection_Shutter_switch(t, 1)
+    for sw in measured_switches:
+        sw(t, 0)
+    # Collection_Shutter_switch(t, 0)
     return t
 
 
@@ -1095,13 +1112,21 @@ gradient_during_pgc = True
 
 t = 0
 initialize(t)
+Collection_Shutter_switch(t,0)
 # t0 = OP_RP_Shutter_switch(t,0)
 trigZstage(t)
 tp = t
 # Blowaway_Shutter_switch(t,1)
 t = Calibration(t)
+# t += 1
+rydberg_MOT_dep = False
+if rydberg_MOT_dep:
+    Ryd685_switch(t, 1)
+    Ryd595_switch(t, 1)
 t = MOT_load(t, MOT_loading_time,trigger_andor=True,coils_on=gradient_during_pgc)  # DDS: MOT (0,0,0)
-
+if rydberg_MOT_dep:
+    Ryd685_switch(t-5, 0)
+    Ryd595_switch(t-5, 0)
 # MOT_Andor_Trig(tp+80,1)
 # MOT_Andor_Trig(tp+81,0)
 
@@ -1156,10 +1181,11 @@ t = LightAssistedCollisions(t, shuttersclosed=[0, 0, 0, 0])
 
 # t = t + 2
 D2_DDS(t, 'Recool')
-t = Recool(t, Recool_time)  # TODO Uncouple the length of this recool phase from the one between RO
+Collection_Shutter_switch(t,1)
+t = Recool(t, Recool_time, Recool_shim)  # TODO Uncouple the length of this recool phase from the one between RO
+t = closeShutters(t-4, *closetheshutters, delay=False)
 t = holdinDark(t,Trap_Hold_time/2)
 
-t = closeShutters(t, *closetheshutters)
 t += XZJitter
 
 t = holdinDark(t, Trap_Hold_time/2)
@@ -1195,11 +1221,15 @@ t = TrapCenterFluorescence(t, RO_Time, chop=DoChop, RO_bins=RO1_bins,
 
 
 #Post-RO Recool
-closeShutters(t,0,0,0,0,delay=False)
-t=holdinDark(t,X_Shutter_delay_on+2.5)
-t0 = t
-t = Recool(t+0.1, 5)
-# closeShutters(t,*closetheshutters,delay=False)
+Collection_Shutter_switch(t, 0)
+recool2_time = 5
+if recool2_time > 0:
+    closeShutters(t, 0, 0, 0, 0, delay=False)
+    t=holdinDark(t,6)
+    # t=holdinDark(t,X_Shutter_delay_on+5)
+    t0 = t
+    t = Recool(t+0.1, recool2_time,Recool_shim)
+    # closeShutters(t+5,*closetheshutters,delay=False)
 
 #FORT_DDS(t, "FORTLoading")
 # t=holdinDark(t,uW_time)
@@ -1207,15 +1237,16 @@ t = Recool(t+0.1, 5)
 # t0 = TrapPulseOff(t0,RO_Time,ODT_on=TrapOn)
 
 # drop recapture
-#t = holdinDark(t,1)
-#t = TrapPulseOff(t,DropTime/1000, ODT_on=TrapOn) #comment out
-#t = holdinDark(t,1)
+if DropTime > 0:
+    t = holdinDark(t,1)
+    t = TrapPulseOff(t,DropTime/1000, ODT_on=TrapOn) #comment out
+    t = holdinDark(t,1)
 
 # closeShutters(t,1,1,1,1)
 # Ryd595_Shutter_switch(t,1)
 # closeShutters(t,*closetheshutters,delay=False)
 
-t = holdinDark(t,GapTime)						# Retention
+t = holdinDark(t, GapTime)						# Retention
 # t = TrapPulseOff(t, GapTime, ODT_on=TrapOn) 					# SNR
 
 # MicrowavePulse(t-.01,0,0.01,uWchop)
@@ -1290,30 +1321,186 @@ t = holdinDark(t,GapTime)						# Retention
 # t=holdinDark(t,4.0)
 # t = holdinDark(t,3.5)
 
-# t = holdinDark(t,5)
-# t = BlowawayPulse(t,Blow_Away_time)
-# t = holdinDark(t,5)
+# Shelve into hyperfine levels ------------------------------------------------------------ Shelving
+if abs(shelve_time) > 0:
+    t += 1
+    D2_DDS(t, 'Recool')
+    biasAO(t - 4, Recool_shim)
+    if shelve_state not in [3, 4]:
+        raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
+    st = shelve_state == 3
+    if shelve_time < 0:
+        st = not st
+        shelve_time = abs(shelve_time)
+    [cool_delay, hf_delay] = [Cooling_Shutter_delay_on, RP_Shutter_delay_off] if st else [Cooling_Shutter_delay_off, RP_Shutter_delay_on]
+    Cooling_Shutter_switch(t - cool_delay, st)
+    RP_Shutter_switch(t - hf_delay, not st)
+    D2_switch(t, st)
+    HF_switch(t, not st)
+    HF_amplitude(t, (not st)*2.6)
+    t += shelve_time
+    [cool_delay, hf_delay] = [Cooling_Shutter_delay_on, RP_Shutter_delay_on]
+    Cooling_Shutter_switch(t, 1)
+    # if Blow_Away_time == 0:
+    RP_Shutter_switch(t - hf_delay, 1)
+    D2_switch(t, 0)
+    HF_switch(t, 0)
+    t0 = t
+    # OPRP from MOT paths
+    # if OP_Time == 0 and OP_shelve_time == 0 and uW_time ==0:
+    #   closeShutters(t, *[1, 0, 1, 1], delay=False)
+    # OPRP from MuxJr path
+    closeShutters(t, *[1, 0, 1, 1], delay=False)
+    # D2_switch(t, 1)
+
+
+# OP pulse -------------------------------------------------------------------------------------- OP
+if OP_Time > 0:
+    # AO(t-4, 3, 0)
+    t = holdinDark(t, 1)
+    Cooling_Shutter_switch(t, 0)
+    # OPRP from MuxJr path
+    # closeShutters(t, *[1, 1, 1, 1], delay=False)
+    t = ShimSweep(t, 1, Recool_shim, OP_shim)
+    t = holdinDark(t, 6)
+    OP_switch(t, 1)
+    HF_switch(t, 1)
+    # HF_amplitude(t-4, OP_HF_amplitude)
+    # OPRP from MuxJr path
+    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
+    t += OP_Time
+    OP_switch(t, 0)
+    HF_switch(t, 0)
+    if abs(OP_shelve_time) == 0 and uW_time == 0:
+        # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+        # OPRP from MuxJr path
+        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off+6, 0)
+        t = ShimSweep(t, 1, OP_shim, RO1_shim)
+        t0 = t
+
+# print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
+# print("RO1 Shim = {}".format(RO1_shim))
+# OP shelve ------------------------------------------------------------------------------ OP shelve
+if abs(OP_shelve_time) > 0:
+    # print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
+    if OP_Time == 0:
+        # print("optiem".format(abs(OP_shelve_time)))
+        t = holdinDark(t, 1)
+        Cooling_Shutter_switch(t, 0)
+        # closeShutters(t, *[1] * 4, delay=False)
+        t = ShimSweep(t, 1, Recool_shim, OP_shim)
+        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
+        t = holdinDark(t, 6)
+    if shelve_state not in [3,4]:
+        raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
+    st = shelve_state == 3
+    if OP_shelve_time < 0:
+        st = not st
+        OP_shelve_time = abs(OP_shelve_time)
+    print(st)
+    OP_switch(t, st)
+    HF_switch(t, not st)
+    OPRP_delay = OP_RP_Shutter_delay_on if not st else OP_RP_Shutter_delay_off - 6
+    OP_RP_Shutter_switch(t - OPRP_delay, not st)
+    # RP_Shutter_switch(t-RP_Shutter_delay_on, not st)
+    t += OP_shelve_time
+    OP_switch(t, 0)
+    HF_switch(t, 0)
+    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off + 6, 0)
+    RP_Shutter_switch(t, 0)
+    if uW_time == 0:
+        # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+        t = ShimSweep(t, 1, OP_shim, RO1_shim)
+        t0 = t
+
+if uW_time > 0:
+    t = ShimSweep(t-1, 1, OP_shim, uW_shim)
+    t = holdinDark(t,3)
+    uW_switch(t, 1)
+    t+= uW_time
+    uW_switch(t, 0)
+    # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off+6, 0)
+    if ryd_time == 0:
+        t = ShimSweep(t, 1, uW_shim, RO1_shim)
+    t0 = t
+
+if ryd_time > 0:
+    ryd_time = ryd_time*1e-3
+    if uW_time == 0:
+        t = ShimSweep(t - 1, 1, OP_shim, uW_shim)
+    ryd685_timing = 640e-6
+    ryd595_timing = 890e-6
+    for i in range(10):
+        Ryd685_switch(t-ryd685_timing,1)
+        Ryd595_switch(t-ryd595_timing,1)
+        Ryd685_switch(t+ryd_time,0)
+        Ryd595_switch(t+ryd_time,0)
+        t = TrapPulseOff(t-1e-3, ryd_time + 1e-3, ODT_on=TrapOn)
+        t = holdinDark(t,5e-3)
+
+# Blow Away ------------------------------------------------------------------------------ Blow Away
+ba_delay = 15
+
+if Blow_Away_time > 0:
+    # Blow Away Pulse
+    t = ShimSweep(t, 1,RO1_shim, BA_shim)
+    t += 1
+    Cooling_Shutter_switch(t, 1)
+    RP_Shutter_switch(t, 0)
+    # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+    t0 += 0.5
+    # RP_Shutter_switch(t0, 0)
+    t0 = holdinDark(t0, 7)
+    # t0 +=5.5
+    t = t0  # max(t0, t)
+    D2_DDS(t-0.001, "RO")
+    # AO(t, 3, 2.6)
+    D2_DDS(t, "BA")
+    D2_switch(t, 1)
+    HF_switch(t, 0)
+    t += Blow_Away_time
+    # drop recapture
+    #t = holdinDark(t,1)
+    TrapPulseOff(t - Blow_Away_time, DropTime/1000, ODT_on=TrapOn) #comment out
+    #t = holdinDark(t,1)
+    D2_switch(t, 0)
+    RP_Shutter_switch(t, 1)
+    t = ShimSweep(t+1, 1, BA_shim, RO1_shim)
+    t += 1
+    closeShutters(t+3, *closetheshutters, delay=False)
+    t = holdinDark(t, ba_delay)
+else:
+    closeShutters(t+3, *closetheshutters, delay=False)
+    t = holdinDark(t, ba_delay+1)
+
+# t = max(t, t0)
 
 #closeShutters(t, *closetheshutters)
 #t = holdinDark(t,X_Shutter_delay_off+11)
 #t = trigZstage(t)
 # t = holdinDark(t,25)
-closeShutters(t-GapTime/2,*closetheshutters,delay=False)
+HF_amplitude(t, 2.6)
+# closeShutters(t-ba_delay/2, *closetheshutters, delay=False)
+Collection_Shutter_switch(t - Collection_Shutter_delay_on, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85 + RO_Time, 0)
 # TrapPulseOff(t, RO_Time, ODT_on=TrapOn)     #FORT Off/On
 t = TrapCenterFluorescence(t, RO_Time, chop=DoChop, RO_bins=RO1_bins,
     drops=RO1_drops, shuttersclosed=closetheshutters,
     ROPowerToggle=ROPowerToggle, SPCM_bins=SPCM_gates)
-Collection_Shutter_switch(t - Collection_Shutter_delay_off, 0)
-
+Collection_Shutter_switch(t, 0)
+switchcoils(t, True)
 closeShutters(t+10, False, False, False, False, delay=False)
-t = holdinDark(t, 25*1.8)
+t = holdinDark(t, 25*1.0)
 #t += 20
 t = TrapPulseOff(t, 2, ODT_on=TrapOn)
 
 #initialize(t)
 
-t = MOT_load(t,1,False)
-
+t = MOT_load(t, 1, False, coils_on=True)
+Ryd595_switch(t,1)
+Ryd685_switch(t,1)
 HF_switch(t, 0)
+OP_switch(t, 1)
+OP_DDS(t, 1)

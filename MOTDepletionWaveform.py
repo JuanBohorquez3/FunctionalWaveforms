@@ -255,14 +255,14 @@ switchcoils(t, True)
 HF_amplitude(t, MOT_hyperfine_power)
 # Initialize Rydberg Lasers to be On
 Ryd685_switch(t, 1)
-Ryd595_switch(t, 0)
+Ryd595_switch(t, 1)
 #calibrate
 cal_time = 6
 vODT_switch(t, 1)
-HF_switch(t,0)
+HF_switch(t, 0)
 trigNIDAQ(t)
 t += cal_time
-vODT_switch(t,1)
+vODT_switch(t, 0)
 HF_switch(t, 1)
 
 

@@ -30,6 +30,8 @@ def ramp(t1, duration, v1, v2, channel):
 
 
 # RF Switches ------------------------------------------------------------------
+ryd685_timing = 600e-6
+ryd595_timing = 900e-6
 
 D2_switch = lambda t, state: HSDIO(t, 19, not (state))
 # D2_switch = lambda t, state: HSDIO(t, 19, 0)  # not (state))
@@ -135,8 +137,7 @@ BA_Shutter_delay_off = 1.9
 MOT_coilsAO = lambda t, v: AO(t, 0, v)
 HF_amplitude = lambda t, v: AO(t, 3, v)
 # HF_amplitude = lambda t, v: AO(t, 3, 2.6)
-vODT_power = lambda t, v: AO(t, 7, v)
-
+vODT_power = lambda t, v: t  # useless, refactor to get rid of
 
 def biasAO(t, shims):
     '''
@@ -207,7 +208,7 @@ def initialize(t):
     vODT_switch(t, 1)
     vODT_power(t, vertTrapPower)
     Ryd685_switch(t, 0)
-    Ryd595_switch(t, 1)
+    Ryd595_switch(t, 0)
     RP_Shutter_switch_init(t, 1)
     Cooling_Shutter_switch_init(t, 1)
     OP_Shutter_switch_init(t, 0)
@@ -229,8 +230,8 @@ def initialize(t):
     D2_DDS(t, 'MOT')
     biasAO(t, MOT_shim)
     switchcoils(t, True)
-    return t
 
+    return t
 
 # ------------------------------------------------------------------------
 #  MOT_load: Load MOT
@@ -1073,6 +1074,52 @@ def switchcoils(t, stat):
     MOT_coilsAO(t, MOTAOVolt(MOT_Coil_Current) * stat)
 
 
+def OnePulseRyd(t, pulse_time, trap_time, uW_enhance):
+    """
+    Args:
+        t: start time
+        pulse_time: length of rydberg pulse
+        duty_cycle: duty cycle of rydberg beams during the chop
+    """
+    t0 = t
+    t = t+max(ryd685_timing, ryd595_timing)
+    vODT_switch(t0, 0)
+    Ryd685_switch(t-ryd685_timing, 1)
+    Ryd595_switch(t-ryd595_timing, 1)
+    Ryd685_switch(t-ryd685_timing+pulse_time, 0)
+    Ryd595_switch(t-ryd595_timing+pulse_time, 0)
+    t = t0 + pulse_time
+    vODT_switch(t, 1)
+    if uW_enhance:
+        uW_switch(t,1)
+        uW_switch(t+trap_time-1e-3,0)
+    return t+trap_time
+
+def EndChopRyd(t, pulse_time):
+    """
+    Args:
+        t: start time
+        pulse_time: length of rydberg pulse
+    """
+    t+=pulse_time*2
+    Ryd685_switch(t,0)
+    Ryd595_switch(t,0)
+    vODT_switch(t,1)
+    # t0 = t
+    # t = t+max(ryd685_timing, ryd595_timing)
+    # vODT_switch(t0, 0)
+    # Ryd685_switch(t-ryd685_timing, 1)
+    # Ryd595_switch(t-ryd595_timing, 1)
+    # Ryd685_switch(t-ryd685_timing+pulse_time, 0)
+    # Ryd595_switch(t-ryd595_timing+pulse_time, 0)
+    # t = t+pulse_time
+    # vODT_switch(t, 1)
+    return t
+
+def ChoppedRyd(t, pulse_time, repeats, uW_enhance=False):
+    funct = lambda t: OnePulseRyd(t, pulse_time, 3e-3,uW_enhance)
+    t = add_repeat(t, funct, repeats)
+    return EndChopRyd(t, pulse_time)
 # ---------------------------------------------------------------------------------------------
 # Calibration: creates a calibration pulse for easy readout of your relevant and/or sensitive powers
 # params: t: Starting time(ms), calTime: Length of calibration pulse (ms)
@@ -1080,7 +1127,9 @@ def switchcoils(t, stat):
 # ---------------------------------------------------------------------------------------------
 def Calibration(t, calTime=3):
     # turn on the MOT Beams:
+    trigNIDAQ(t)
     measured_switches = [Ryd595_switch, Ryd685_switch, OP_switch, OP_DDS]
+    # measured_switches = [OP_switch, OP_DDS]
     Cooling_Shutter_switch(t, 1)
     closeShutters(t, 0, 0, 0, 0, delay=False)
     D2_switch(t, 1)
@@ -1093,7 +1142,7 @@ def Calibration(t, calTime=3):
 
     t += calTime
     # trigger the NIDAQ
-    trigNIDAQ(t)
+    #trigNIDAQ(t)
     t += calTime
 
     for sw in measured_switches:
@@ -1321,159 +1370,217 @@ t = holdinDark(t, GapTime)						# Retention
 # t=holdinDark(t,4.0)
 # t = holdinDark(t,3.5)
 
-# Shelve into hyperfine levels ------------------------------------------------------------ Shelving
-if abs(shelve_time) > 0:
-    t += 1
-    D2_DDS(t, 'Recool')
-    biasAO(t - 4, Recool_shim)
-    if shelve_state not in [3, 4]:
-        raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
-    st = shelve_state == 3
-    if shelve_time < 0:
-        st = not st
-        shelve_time = abs(shelve_time)
-    [cool_delay, hf_delay] = [Cooling_Shutter_delay_on, RP_Shutter_delay_off] if st else [Cooling_Shutter_delay_off, RP_Shutter_delay_on]
-    Cooling_Shutter_switch(t - cool_delay, st)
-    RP_Shutter_switch(t - hf_delay, not st)
-    D2_switch(t, st)
-    HF_switch(t, not st)
-    HF_amplitude(t, (not st)*2.6)
-    t += shelve_time
-    [cool_delay, hf_delay] = [Cooling_Shutter_delay_on, RP_Shutter_delay_on]
-    Cooling_Shutter_switch(t, 1)
-    # if Blow_Away_time == 0:
-    RP_Shutter_switch(t - hf_delay, 1)
-    D2_switch(t, 0)
-    HF_switch(t, 0)
-    t0 = t
-    # OPRP from MOT paths
-    # if OP_Time == 0 and OP_shelve_time == 0 and uW_time ==0:
-    #   closeShutters(t, *[1, 0, 1, 1], delay=False)
-    # OPRP from MuxJr path
-    closeShutters(t, *[1, 0, 1, 1], delay=False)
-    # D2_switch(t, 1)
+ba_delay = 15
+if not BL:
 
-
-# OP pulse -------------------------------------------------------------------------------------- OP
-if OP_Time > 0:
-    # AO(t-4, 3, 0)
-    t = holdinDark(t, 1)
-    Cooling_Shutter_switch(t, 0)
-    # OPRP from MuxJr path
-    # closeShutters(t, *[1, 1, 1, 1], delay=False)
-    t = ShimSweep(t, 1, Recool_shim, OP_shim)
-    t = holdinDark(t, 6)
-    OP_switch(t, 1)
-    HF_switch(t, 1)
-    # HF_amplitude(t-4, OP_HF_amplitude)
-    # OPRP from MuxJr path
-    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
-    t += OP_Time
-    OP_switch(t, 0)
-    HF_switch(t, 0)
-    if abs(OP_shelve_time) == 0 and uW_time == 0:
-        # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
-        # OPRP from MuxJr path
-        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off+6, 0)
-        t = ShimSweep(t, 1, OP_shim, RO1_shim)
+    # Shelve into hyperfine levels ------------------------------------------------------------ Shelving
+    if abs(shelve_time) > 0:
+        t += 1
+        D2_DDS(t, 'Recool')
+        biasAO(t - 4, Recool_shim)
+        if shelve_state not in [3, 4]:
+            raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
+        st = shelve_state == 3
+        if shelve_time < 0:
+            st = not st
+            shelve_time = abs(shelve_time)
+        [cool_delay, hf_delay] = [Cooling_Shutter_delay_on, RP_Shutter_delay_off] if st else [Cooling_Shutter_delay_off, RP_Shutter_delay_on]
+        Cooling_Shutter_switch(t - cool_delay, st)
+        RP_Shutter_switch(t - hf_delay, not st)
+        D2_switch(t, st)
+        HF_switch(t, not st)
+        HF_amplitude(t, (not st)*2.6)
+        t += shelve_time
+        [cool_delay, hf_delay] = [Cooling_Shutter_delay_on, RP_Shutter_delay_on]
+        #Cooling_Shutter_switch(t, 1)
+        # if Blow_Away_time == 0:
+        RP_Shutter_switch(t - hf_delay, 1)
+        D2_switch(t, 0)
+        HF_switch(t, 0)
         t0 = t
+        # OPRP from MOT paths
+        # if OP_Time == 0 and OP_shelve_time == 0 and uW_time ==0:
+        #   closeShutters(t, *[1, 0, 1, 1], delay=False)
+        # OPRP from MuxJr path
+        closeShutters(t, *[1, 0, 1, 1], delay=False)
+        # D2_switch(t, 1)
 
-# print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
-# print("RO1 Shim = {}".format(RO1_shim))
-# OP shelve ------------------------------------------------------------------------------ OP shelve
-if abs(OP_shelve_time) > 0:
-    # print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
-    if OP_Time == 0:
-        # print("optiem".format(abs(OP_shelve_time)))
+
+    # OP pulse -------------------------------------------------------------------------------------- OP
+    if OP_Time > 0:
+        # AO(t-4, 3, 0)
         t = holdinDark(t, 1)
         Cooling_Shutter_switch(t, 0)
-        # closeShutters(t, *[1] * 4, delay=False)
+        # OPRP from MuxJr path
+        # closeShutters(t, *[1, 1, 1, 1], delay=False)
         t = ShimSweep(t, 1, Recool_shim, OP_shim)
-        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
         t = holdinDark(t, 6)
-    if shelve_state not in [3,4]:
-        raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
-    st = shelve_state == 3
-    if OP_shelve_time < 0:
-        st = not st
-        OP_shelve_time = abs(OP_shelve_time)
-    print(st)
-    OP_switch(t, st)
-    HF_switch(t, not st)
-    OPRP_delay = OP_RP_Shutter_delay_on if not st else OP_RP_Shutter_delay_off - 6
-    OP_RP_Shutter_switch(t - OPRP_delay, not st)
-    # RP_Shutter_switch(t-RP_Shutter_delay_on, not st)
-    t += OP_shelve_time
-    OP_switch(t, 0)
-    HF_switch(t, 0)
-    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off + 6, 0)
-    RP_Shutter_switch(t, 0)
-    if uW_time == 0:
+        OP_switch(t, 1)
+        # HF_switch(t, 0)
+        HF_switch(t, 1)
+        # HF_amplitude(t-4, OP_HF_amplitude)
+        # OPRP from MuxJr path
+        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
+        t += OP_Time
+        OP_switch(t, 0)
+        HF_switch(t, 0)
+        if abs(OP_shelve_time) == 0 and uW_time == 0:
+            # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+            # OPRP from MuxJr path
+            OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off+6, 0)
+            t = ShimSweep(t, 1, OP_shim, RO1_shim)
+            t0 = t
+
+    # print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
+    # print("RO1 Shim = {}".format(RO1_shim))
+    # OP shelve ------------------------------------------------------------------------------ OP shelve
+    OP_shelve_init = OP_shelve_time
+    if abs(OP_shelve_time) > 0:
+        # print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
+        if OP_Time == 0:
+            # print("optiem".format(abs(OP_shelve_time)))
+            t = holdinDark(t, 1)
+            Cooling_Shutter_switch(t, 0)
+            # closeShutters(t, *[1] * 4, delay=False)
+            t = ShimSweep(t, 1, Recool_shim, OP_shim)
+            OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
+            t = holdinDark(t, 6)
+        if shelve_state not in [3,4]:
+            raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
+        st = shelve_state == 3
+        if OP_shelve_time < 0:
+            st = not st
+            OP_shelve_time = abs(OP_shelve_time)
+        print(st)
+        OP_switch(t, st)
+        HF_switch(t, not st)
+        # HF_switch(t, 0)
+        OPRP_delay = OP_RP_Shutter_delay_on if not st else OP_RP_Shutter_delay_off - 6
+        # OP_RP_Shutter_switch(t - OPRP_delay, not st)
+        # RP_Shutter_switch(t-RP_Shutter_delay_on, not st)
+        t += OP_shelve_time
+        OP_switch(t, 0)
+        HF_switch(t, 0)
+        # OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off + 6, 0)
+        RP_Shutter_switch(t, 0)
+        if uW_time == 0 and ryd_time == 0:
+            # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+            t = ShimSweep(t, 1, OP_shim, RO1_shim)
+            t0 = t
+
+    # OP shelve ------------------------------------------------------------------------------ OP shelve
+    # Shelve into F=4 state no matter what
+    if OP_shelve_init > 0:
+        OP_shelve_time_p = -0.5
+        # print("abs(OP_shelve_time) = {}".format(abs(OP_shelve_time)))
+        if OP_Time == 0:
+            # print("optiem".format(abs(OP_shelve_time)))
+            t = holdinDark(t, 1)
+            Cooling_Shutter_switch(t, 0)
+            # closeShutters(t, *[1] * 4, delay=False)
+            t = ShimSweep(t, 1, Recool_shim, OP_shim)
+            OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_on, 1)
+            t = holdinDark(t, 6)
+        if shelve_state not in [3,4]:
+            raise ValueError("shelve_state must be 3 or 4. There are no other HF Levels!")
+        st = shelve_state == 3
+        if OP_shelve_time_p < 0:
+            st = not st
+            OP_shelve_time_p = abs(OP_shelve_time_p)
+        print(st)
+        OP_switch(t, st)
+        # HF_switch(t, 0)
+        HF_switch(t, not st)
+        OPRP_delay = OP_RP_Shutter_delay_on if not st else OP_RP_Shutter_delay_off - 6
+        OP_RP_Shutter_switch(t - OPRP_delay, not st)
+        # RP_Shutter_switch(t-RP_Shutter_delay_on, not st)
+        t += OP_shelve_time_p
+        OP_switch(t, 0)
+        HF_switch(t, 0)
+        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off + 6, 0)
+        RP_Shutter_switch(t, 0)
+        if uW_time == 0 and ryd_time == 0:
+            # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+            t = ShimSweep(t, 1, OP_shim, RO1_shim)
+            t0 = t
+
+    if uW_time > 0:
+        t = ShimSweep(t-1, 1, OP_shim, uW_shim)
+        t = holdinDark(t,3)
+        uW_switch(t, 1)
+        t+= uW_time
+        uW_switch(t, 0)
         # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
-        t = ShimSweep(t, 1, OP_shim, RO1_shim)
+        OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off+6, 0)
+        if ryd_time == 0:
+            t = ShimSweep(t, 1, uW_shim, RO1_shim)
         t0 = t
 
-if uW_time > 0:
-    t = ShimSweep(t-1, 1, OP_shim, uW_shim)
-    t = holdinDark(t,3)
-    uW_switch(t, 1)
-    t+= uW_time
-    uW_switch(t, 0)
-    # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
-    OP_RP_Shutter_switch(t - OP_RP_Shutter_delay_off+6, 0)
-    if ryd_time == 0:
-        t = ShimSweep(t, 1, uW_shim, RO1_shim)
-    t0 = t
+    if ryd_time > 0:
+        if uW_time == 0:
+            t += 4
+            t = ShimSweep(t - 1, 1, OP_shim, uW_shim)
+            t += 4
+        else:
+            t += 1
+        chop_ryd = ryd_chops > 1
+        if chop_ryd:
+            ChoppedRyd(t, ryd_time*1e-3, int(ryd_chops), uW_enhance=False)
+        else:
+            ryd_time = ryd_time*1e-3
+            Ryd685_switch(t-ryd685_timing,1)
+            Ryd595_switch(t-ryd595_timing,1)
+            Ryd685_switch(t-ryd685_timing+ryd_time,0)
+            Ryd595_switch(t-ryd595_timing+ryd_time,0)
+            t = TrapPulseOff(t-1e-3, ryd_time + 1.0e-3, ODT_on=True)
+            # Pulse on uW field to expedite photoionization
+            # uW_switch(t+1e-3,1)
+            # uW_switch(t+3e-3,0)
+            t = holdinDark(t, 5e-3)
+        if Blow_Away_time == 0:
+            t = ShimSweep(t+1, 1, uW_shim, RO1_shim)
+        else:
+            t = ShimSweep(t+1, 1, uW_shim, BA_shim)
 
-if ryd_time > 0:
-    ryd_time = ryd_time*1e-3
-    if uW_time == 0:
-        t = ShimSweep(t - 1, 1, OP_shim, uW_shim)
-    ryd685_timing = 640e-6
-    ryd595_timing = 890e-6
-    for i in range(10):
-        Ryd685_switch(t-ryd685_timing,1)
-        Ryd595_switch(t-ryd595_timing,1)
-        Ryd685_switch(t+ryd_time,0)
-        Ryd595_switch(t+ryd_time,0)
-        t = TrapPulseOff(t-1e-3, ryd_time + 1e-3, ODT_on=TrapOn)
-        t = holdinDark(t,5e-3)
+    # Blow Away ------------------------------------------------------------------------------ Blow Away
+    if Blow_Away_time > 0:
+        # Blow Away Pulse
+        t = ShimSweep(t, 1,RO1_shim, BA_shim)
+        t += 1
+        Cooling_Shutter_switch(t, 1)
+        RP_Shutter_switch(t, 0)
+        # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
+        t0 += 0.5
+        # RP_Shutter_switch(t0, 0)
+        t0 = holdinDark(t0, 7)
+        # t0 +=5.5
+        t = t0  # max(t0, t)
+        D2_DDS(t-0.001, "RO")
+        # AO(t, 3, 2.6)
+        D2_DDS(t, "BA")
+        D2_switch(t, 1)
+        HF_switch(t, 0)
+        t += Blow_Away_time
+        # drop recapture
+        #t = holdinDark(t,1)
+        TrapPulseOff(t - Blow_Away_time, DropTime/1000, ODT_on=TrapOn) #comment out
+        #t = holdinDark(t,1)
+        D2_switch(t, 0)
+        RP_Shutter_switch(t, 1)
+        t = ShimSweep(t+1, 1, BA_shim, RO1_shim)
+        t += 1
+        Cooling_Shutter_switch(t, 1)
+        closeShutters(t+3, *closetheshutters, delay=False)
+        t = holdinDark(t, ba_delay)
+    else:
+        Cooling_Shutter_switch(t, 1)
+        closeShutters(t+3, *closetheshutters, delay=False)
+        t = holdinDark(t, ba_delay+1)
 
-# Blow Away ------------------------------------------------------------------------------ Blow Away
-ba_delay = 15
-
-if Blow_Away_time > 0:
-    # Blow Away Pulse
-    t = ShimSweep(t, 1,RO1_shim, BA_shim)
-    t += 1
-    Cooling_Shutter_switch(t, 1)
-    RP_Shutter_switch(t, 0)
-    # closeShutters(t, *[1, 0, 1, 1], delay=False)  # Leave just Y1 open
-    t0 += 0.5
-    # RP_Shutter_switch(t0, 0)
-    t0 = holdinDark(t0, 7)
-    # t0 +=5.5
-    t = t0  # max(t0, t)
-    D2_DDS(t-0.001, "RO")
-    # AO(t, 3, 2.6)
-    D2_DDS(t, "BA")
-    D2_switch(t, 1)
-    HF_switch(t, 0)
-    t += Blow_Away_time
-    # drop recapture
-    #t = holdinDark(t,1)
-    TrapPulseOff(t - Blow_Away_time, DropTime/1000, ODT_on=TrapOn) #comment out
-    #t = holdinDark(t,1)
-    D2_switch(t, 0)
-    RP_Shutter_switch(t, 1)
-    t = ShimSweep(t+1, 1, BA_shim, RO1_shim)
-    t += 1
-    closeShutters(t+3, *closetheshutters, delay=False)
-    t = holdinDark(t, ba_delay)
 else:
-    closeShutters(t+3, *closetheshutters, delay=False)
-    t = holdinDark(t, ba_delay+1)
-
+    closeShutters(t + 3, *closetheshutters, delay=False)
+    Cooling_Shutter_switch(t,1)
+    t = holdinDark(t, ba_delay + 1)
 # t = max(t, t0)
 
 #closeShutters(t, *closetheshutters)
@@ -1482,6 +1589,7 @@ else:
 # t = holdinDark(t,25)
 HF_amplitude(t, 2.6)
 # closeShutters(t-ba_delay/2, *closetheshutters, delay=False)
+t+=3
 Collection_Shutter_switch(t - Collection_Shutter_delay_on, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85, 1)
 Hamamatsu_Trig(t + Hamamatsu_Trig_Shim + 10.85 + RO_Time, 0)

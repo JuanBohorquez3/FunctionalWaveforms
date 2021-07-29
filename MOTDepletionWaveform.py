@@ -254,7 +254,7 @@ HF_amplitude(t, MOT_hyperfine_power)
 switchcoils(t, True)
 HF_amplitude(t, MOT_hyperfine_power)
 # Initialize Rydberg Lasers to be On
-Ryd685_switch(t, 1)
+Ryd685_switch(t, 0)
 Ryd595_switch(t, 1)
 #calibrate
 cal_time = 6
@@ -262,8 +262,10 @@ vODT_switch(t, 1)
 HF_switch(t, 0)
 trigNIDAQ(t)
 t += cal_time
-vODT_switch(t, 0)
+vODT_switch(t, 1)
 HF_switch(t, 1)
+Ryd685_switch(t, 0)
+Ryd595_switch(t, 0)
 
 
 # Add dummy transitions
@@ -274,19 +276,19 @@ RO_bin_width = RO_Time / float(RO1_bins) / 2
 tt = t
 # t = SPCMPulse(t,drops,RO_bin_width*2)
 # SPCM_gate(t,1)
-for i in range(RO1_drops):
-    SPCM_clock(tt, 1)
-    # SPCM_gate(tt, 1)
-    tt += RO_bin_width
-    SPCM_clock(tt, 0)
-    # SPCM_gate(tt, 0)
-    tt += RO_bin_width
-
-for i in range(RO1_bins):
-    SPCM_clock(t, 1)
-    tt += RO_bin_width
-    SPCM_clock(t, 0)
-    tt += RO_bin_width
+# for i in range(RO1_drops):
+#     SPCM_clock(tt, 1)
+#     # SPCM_gate(tt, 1)
+#     tt += RO_bin_width
+#     SPCM_clock(tt, 0)
+#     # SPCM_gate(tt, 0)
+#     tt += RO_bin_width
+#
+# for i in range(RO1_bins):
+#     SPCM_clock(t, 1)
+#     tt += RO_bin_width
+#     SPCM_clock(t, 0)
+#     tt += RO_bin_width
 
 print("tt = " + str(tt))
 
@@ -295,4 +297,24 @@ MOT_Andor_Trig(t, 1)
 MOT_Andor_Trig(t + 1, 0)
 
 t += AndorExpT
+
+tt = t
+
+# for i in range(RO1_bins):
+#     SPCM_clock(tt, 0)
+#     # SPCM_gate(tt, 1)
+#     tt -= RO_bin_width
+#     SPCM_clock(tt, 1)
+#     # SPCM_gate(tt, 0)
+#     tt -= RO_bin_width
+
+for i in range(3):
+    SPCM_clock(tt, 0)
+    # SPCM_gate(tt, 1)
+    tt -= RO_bin_width
+    SPCM_clock(tt, 1)
+    # SPCM_gate(tt, 0)
+    tt -= RO_bin_width
+
+
 print("MOT depletion waveform loaded. Duration = {}".format(t))

@@ -36,7 +36,7 @@ ryd595_timing = 900e-6
 D2_switch = lambda t, state: HSDIO(t, 19, not (state))
 # D2_switch = lambda t, state: HSDIO(t, 19, 0)  # not (state))
 HF_switch = lambda t, state: HSDIO(t, 18, not (state))
-# HF_switch = lambda t, state: HSDIO(t, 18, not 1)
+# HF_switch = lambda t, state: HSDIO(t, 18, 1)
 vODT_switch = lambda t, state: HSDIO(t, 20, not (state))
 Ryd685_switch = lambda t, state: HSDIO(t, 22, state)
 Ryd595_switch = lambda t, state: HSDIO(t, 21, state)
@@ -54,6 +54,9 @@ Hamamatsu_Trig = lambda t, state: HSDIO(t, 31,state)
 MOT_coils_switch = lambda t, state: HSDIO(t, 17, not (state))
 SPCM_gate = lambda t, state: HSDIO(t, 26, state)
 OP_DDS = lambda t, state: HSDIO(t, 27,state)
+Aerotech_z_trig = lambda t, state: HSDIO(t, 28, state)
+AO_start_trig = lambda t, state: HSDIO(t, 30,state)
+timing_trig = lambda t, state: HSDIO(t, 29, state)
 
 # Shutter Switches -------------------------------------------------------------
 XZ_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 25, not state)
@@ -75,7 +78,7 @@ OP_RP_Shutter_switch_init = lambda t, state: HSDIO(t, 6, state)
 Blowaway_Shutter_switch_init = lambda t, state: HSDIO(t, 2, state)  #Not Set!
 Ryd595_Shutter_switch_init = lambda t, state: HSDIO(t, 2, not (state))  #Not Set!
 Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, state)
-# Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, 0)
+# Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, 1)
 
 if ShuttersOn:
     XZ_Only_Shutter_switch = XZ_Only_Shutter_switch_init  # Shutter on Z1 Chip Imaging Beam. Used to be HF Shutter
@@ -150,7 +153,7 @@ def biasAO(t, shims):
     AO(t, 6, shims[2])
 
     # correct for a finite switching time
-    t += 2+2
+    t += 2
     return t
 
 
@@ -230,6 +233,9 @@ def initialize(t):
     D2_DDS(t, 'MOT')
     biasAO(t, MOT_shim)
     switchcoils(t, True)
+
+    AO_start_trig(t, 1)
+    AO_start_trig(t+0.1,0)
 
     return t
 
@@ -1271,7 +1277,7 @@ t = TrapCenterFluorescence(t, RO_Time, chop=DoChop, RO_bins=RO1_bins,
 
 #Post-RO Recool
 Collection_Shutter_switch(t, 0)
-recool2_time = 5
+recool2_time = 0
 if recool2_time > 0:
     closeShutters(t, 0, 0, 0, 0, delay=False)
     t=holdinDark(t,6)
@@ -1279,6 +1285,8 @@ if recool2_time > 0:
     t0 = t
     t = Recool(t+0.1, recool2_time,Recool_shim)
     # closeShutters(t+5,*closetheshutters,delay=False)
+else:
+    t += 5
 
 #FORT_DDS(t, "FORTLoading")
 # t=holdinDark(t,uW_time)
@@ -1405,6 +1413,13 @@ if not BL:
         closeShutters(t, *[1, 0, 1, 1], delay=False)
         # D2_switch(t, 1)
 
+    if AerotechTrigger:
+        Aerotech_z_trig(t,1)
+        t += 5
+        Aerotech_z_trig(t,0)
+        t += aerotech_rise_time
+        timing_trig(t, 1)
+        timing_trig(t+1, 0)
 
     # OP pulse -------------------------------------------------------------------------------------- OP
     if OP_Time > 0:
@@ -1542,6 +1557,14 @@ if not BL:
         else:
             t = ShimSweep(t+1, 1, uW_shim, BA_shim)
 
+
+    if AerotechTrigger:
+        timing_trig(t, 1)
+        timing_trig(t+1, 0)
+        t += aerotech_fall_time
+        timing_trig(t, 1)
+        timing_trig(t+1, 0)
+
     # Blow Away ------------------------------------------------------------------------------ Blow Away
     if Blow_Away_time > 0:
         # Blow Away Pulse
@@ -1609,6 +1632,6 @@ t = TrapPulseOff(t, 2, ODT_on=TrapOn)
 t = MOT_load(t, 1, False, coils_on=True)
 Ryd595_switch(t,1)
 Ryd685_switch(t,1)
-HF_switch(t, 0)
+HF_switch(t, 1)
 OP_switch(t, 1)
 OP_DDS(t, 1)

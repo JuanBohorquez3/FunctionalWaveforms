@@ -20,9 +20,9 @@ def pulse(t, duration, channel):
     return t
 
 
-def ramp(t1, duration, v1, v2, channel):
+def ramp(t1, duration, v1, v2, channel,dt = 0.001):
     t2 = t1 + duration
-    times = arange(t1, t1 + duration, .001)
+    times = arange(t1, t1 + duration, dt)
     voltages = linspace(v1, v2, len(times))
     for t, v in zip(times, voltages):
         AO(t, channel, v)
@@ -34,10 +34,11 @@ ryd685_timing = 600e-6
 ryd595_timing = 900e-6
 
 D2_switch = lambda t, state: HSDIO(t, 19, not (state))
-# D2_switch = lambda t, state: HSDIO(t, 19, 0)  # not (state))
+#D2_switch = lambda t, state: HSDIO(t, 19, 0)  # not (state))
 HF_switch = lambda t, state: HSDIO(t, 18, not (state))
-# HF_switch = lambda t, state: HSDIO(t, 18, not 1)
+# HF_switch = lambda t, state: HSDIO(t, 18, 1)
 vODT_switch = lambda t, state: HSDIO(t, 20, not (state))
+#vODT_switch = lambda t, state: HSDIO(t, 20, 0)
 Ryd685_switch = lambda t, state: HSDIO(t, 22, state)
 Ryd595_switch = lambda t, state: HSDIO(t, 21, state)
 chop = lambda t, state: HSDIO(t, 24, state)
@@ -50,10 +51,13 @@ NIScope_Trig = lambda t, state: HSDIO(t, 2, state)  #Not Set!
 Zstage_Trig = lambda t, state: HSDIO(t, 2, state)  #Not Set!
 MOT_Andor_Trig = lambda t, state: HSDIO(t, 15, state)
 NIDAQ_Trig = lambda t, state: HSDIO(t, 14, state)
-Hamamatsu_Trig = lambda t, state: HSDIO(t, 31,state)
+Hamamatsu_Trig = lambda t, state: HSDIO(t, 2,state)
 MOT_coils_switch = lambda t, state: HSDIO(t, 17, not (state))
 SPCM_gate = lambda t, state: HSDIO(t, 26, state)
 OP_DDS = lambda t, state: HSDIO(t, 27,state)
+Aerotech_z_trig = lambda t, state: HSDIO(t, 28, state)
+AO_start_trig = lambda t, state: HSDIO(t, 30,state)
+timing_trig = lambda t, state: HSDIO(t, 29, state)
 
 # Shutter Switches -------------------------------------------------------------
 XZ_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 25, not state)
@@ -75,7 +79,7 @@ OP_RP_Shutter_switch_init = lambda t, state: HSDIO(t, 6, state)
 Blowaway_Shutter_switch_init = lambda t, state: HSDIO(t, 2, state)  #Not Set!
 Ryd595_Shutter_switch_init = lambda t, state: HSDIO(t, 2, not (state))  #Not Set!
 Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, state)
-# Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, 0)
+# Collection_Shutter_switch_init = lambda t, state: HSDIO(t, 5, 1)
 
 if ShuttersOn:
     XZ_Only_Shutter_switch = XZ_Only_Shutter_switch_init  # Shutter on Z1 Chip Imaging Beam. Used to be HF Shutter
@@ -132,12 +136,32 @@ Collection_Shutter_delay_off = 0
 BA_Shutter_delay_on = 2.4
 BA_Shutter_delay_off = 1.9
 
+
 ###AO Controls###
 
 MOT_coilsAO = lambda t, v: AO(t, 0, v)
 HF_amplitude = lambda t, v: AO(t, 3, v)
 # HF_amplitude = lambda t, v: AO(t, 3, 2.6)
-vODT_power = lambda t, v: AO(t, 7, v)  # useless, refactor to get rid of
+vODT_power = lambda t, v: AO(t, 2, v)
+
+def FORT_cal(p):
+    """
+    uses FORT calibration parameters to return voltage to FORT VVA that results in
+    desired FORT output power (as a fraction of max power)
+    Args:
+        p: desired FORT output power as a fraction of max power
+
+    Returns:
+        v_set: VVA set voltage that results in desired p
+    """
+    a = 7.62e-2
+    b = 5.56e-3
+    vt = 1.79
+
+    v_set = vt+1/(2*b)*(-a+sqrt(a**2+4*b*p))
+    return v_set
+
+FORT_power = lambda t, p: vODT_power(t, FORT_cal(p))
 
 def biasAO(t, shims):
     '''
@@ -171,6 +195,15 @@ def D2_DDS(t, stage):
     HSDIO(t, 1, set[2])  # DDS bit 0
     HSDIO(t, 3, set[1])  # DDS bit 1
     HSDIO(t, 4, set[0])  # DDS bit 2
+
+    return t
+
+def FORT_DDS(t, stage):
+    stage_dict = {'FORTLoading': (0,0), 'FORTLAC': (0,1), 'FORTRO': (1,1)}
+    set = stage_dict[stage]
+
+    HSDIO(t, 16, set[0]) #DDS bit 0
+    HSDIO(t, 31, set[1]) #DDS bit 1
 
     return t
 
@@ -240,10 +273,12 @@ def trigNIDAQ(t):
 
 
 t = 0
+FORT_DDS(t,'FORTLoading')
+FORT_power(t,1)
+vODT_switch(t,1)
 # initialize HSDIO and AO channels to create a MOT
 closeShutters(t, 0, 0, 0, 0, False)
 uW_switch(t,0)
-vODT_power(t,0)
 HF_switch(t, 1)
 D2_switch(t, 1)
 # HF_switch(t,0)
@@ -254,22 +289,22 @@ HF_amplitude(t, MOT_hyperfine_power)
 switchcoils(t, True)
 HF_amplitude(t, MOT_hyperfine_power)
 # Initialize Rydberg Lasers to be On
-Ryd685_switch(t, 0)
+Ryd685_switch(t, 1)  # To 1
 Ryd595_switch(t, 1)
 #calibrate
-cal_time = 6
-vODT_switch(t, 1)
+cal_time = 3.0
+vODT_switch(t, 1)  # To 0
 HF_switch(t, 0)
 trigNIDAQ(t)
 t += cal_time
-vODT_switch(t, 1)
+vODT_switch(t, 1)  # To 0
 HF_switch(t, 1)
-Ryd685_switch(t, 0)
-Ryd595_switch(t, 0)
+Ryd685_switch(t, 1)  # To 1
+Ryd595_switch(t, 1)
 
-
-# Add dummy transitions
-vODT_power(t,4)
+# Dummy AO transition
+AO(t,1,0)
+AO(t+2,1,1)
 
 RO_bin_width = RO_Time / float(RO1_bins) / 2
 # set up pre-pulse dump bins
@@ -308,7 +343,7 @@ tt = t
 #     # SPCM_gate(tt, 0)
 #     tt -= RO_bin_width
 
-for i in range(3):
+for i in range(2):
     SPCM_clock(tt, 0)
     # SPCM_gate(tt, 1)
     tt -= RO_bin_width

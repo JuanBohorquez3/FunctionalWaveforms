@@ -56,6 +56,7 @@ MOT_coils_switch = lambda t, state: HSDIO(t, 17, not (state))
 SPCM_gate = lambda t, state: HSDIO(t, 26, state)
 OP_DDS = lambda t, state: HSDIO(t, 27,state)
 AO_start_trig = lambda t, state: HSDIO(t, 30,state)
+RydRyd_switch = lambda t, state: HSDIO(t, 16, not(state))
 
 # Shutter Switches -------------------------------------------------------------
 XZ_Only_Shutter_switch_init = lambda t, state: HSDIO(t, 25, not state)
@@ -155,6 +156,28 @@ def biasAO(t, shims):
     t += 2
     return t
 
+def exp_biasAO(ti, tf, bias_i, bias_f, T, b, dt = .001):
+    """
+    switch bias fields from bias_i to bias_f with a low pass character. based on function a*(1-b*exp(-(t-ti)/T)) where a
+    is set based on bias_i and bias_f for each coil.
+    Args:
+        ti: initial time (ms)
+        tf: final time (ms)
+        bias_i: initial bias field configuration [x,y,z] (V)
+        bias_f: final bias field configuration [x,y,z] (V)
+        T: characteristic decay time of low pass character (ms)
+        b: b coefficient of low pass character (unitless)
+        dt: rate at which function is sampled
+
+    Returns:
+        t after bias field sweep
+    """
+    avec = [bias_f[i] - bias_i[i] for i in range(3)]
+    funcs = lambda x : [avec[i]*(1-b*exp(-(x-ti)/T))+bias_i[i] for i in range(3)]
+    times =  arange(ti,tf,dt)
+    for ts in times:
+        biasAO(ts, funcs(ts))
+    return tf
 
 ###SPCM Clocks on succsessive rising edges###
 
@@ -1268,8 +1291,7 @@ if DropTime > 0:
     t = TrapPulseOff(t,DropTime/1000, ODT_on=TrapOn) #comment out
     t = holdinDark(t,1)
 
-t = holdinDark(t, GapTime)						# Retention
-
+# t = holdinDark(t, GapTime)						# Retention
 
 ba_delay = 15
 if not BL:
